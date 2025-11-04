@@ -1,14 +1,18 @@
 <?php
 /* 
- * Raw Wealthy Investment Platform - Enterprise Production Edition
+ * Raw Wealthy Investment Platform - Enterprise Production Edition v5.0
  * Advanced Platform with Complete Feature Set in Single File
  * Enhanced Security, Performance, Scalability, and Profitability Features
- * Market-Ready with Advanced Investment Algorithms - Naira Edition
+ * Market-Ready with Advanced Investment Algorithms
+ * FULLY INTEGRATED FRONTEND-BACKEND COMMUNICATION
+ * 25 Investment Plans with $3,500 - $300,000 Range
+ * 10% Withdrawal Fees & 10% Referral Commissions
+ * Advanced Admin Dashboard
  */
 
 // Strict error reporting for production
 error_reporting(E_ALL);
-ini_set('display_errors', 0); // Disable in production
+ini_set('display_errors', 0);
 ini_set('log_errors', 1);
 ini_set('error_log', __DIR__ . '/logs/php_errors.log');
 
@@ -22,20 +26,39 @@ session_start([
 
 // Define enterprise-grade constants
 define('APP_NAME', 'Raw Wealthy Investment Platform');
-define('APP_VERSION', '4.0.0');
+define('APP_VERSION', '5.0.0');
 define('BASE_URL', 'https://' . $_SERVER['HTTP_HOST'] . '/');
 define('UPLOAD_PATH', realpath(dirname(__FILE__) . '/uploads') . '/');
-define('MAX_FILE_SIZE', 50 * 1024 * 1024); // 50MB
-define('JWT_SECRET', getenv('JWT_SECRET') ?: 'enterprise-secure-key-2024-change-in-production');
-define('JWT_EXPIRY', 86400); // 24 hours
-define('REFERRAL_BONUS_RATE', 0.20); // Increased to 20%
-define('WITHDRAWAL_FEE_RATE', 0.05); // 5% withdrawal fee
-define('MIN_DEPOSIT', 3500); // 3,500 Naira minimum
-define('MIN_WITHDRAWAL', 3500); // 3,500 Naira minimum
-define('MAX_WITHDRAWAL', 500000); // 500,000 Naira maximum
-define('DAILY_PROFIT_RATE', 0.035); // 3.5% daily
-define('COMPOUND_INTEREST_RATE', 0.02); // 2% compound
-define('RISK_MANAGEMENT_BUFFER', 0.10); // 10% risk buffer
+define('MAX_FILE_SIZE', 50 * 1024 * 1024);
+define('JWT_SECRET', getenv('JWT_SECRET') ?: 'raw-wealthy-enterprise-secure-key-2024-change-in-production');
+define('JWT_EXPIRY', 86400);
+define('REFERRAL_BONUS_RATE', 0.10); // Changed to 10%
+define('WITHDRAWAL_FEE_RATE', 0.10); // Changed to 10%
+define('MIN_DEPOSIT', 500);
+define('MIN_WITHDRAWAL', 1000);
+define('MAX_WITHDRAWAL', 300000);
+define('DAILY_PROFIT_RATE', 0.045);
+define('COMPOUND_INTEREST_RATE', 0.025);
+define('RISK_MANAGEMENT_BUFFER', 0.12);
+
+// Enhanced CORS Configuration
+$allowed_origins = [
+    'https://rawwealthy.com',
+    'https://www.rawwealthy.com',
+    'https://app.rawwealthy.com',
+    'https://admin.rawwealthy.com',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5173'
+];
+
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowed_origins)) {
+    header("Access-Control-Allow-Origin: $origin");
+} else {
+    header("Access-Control-Allow-Origin: https://rawwealthy.com");
+}
 
 // Advanced security headers
 header("X-Frame-Options: DENY");
@@ -47,16 +70,15 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-i
 header("Permissions-Policy: geolocation=(), microphone=(), camera=()");
 
 // CORS headers for modern applications
-header("Access-Control-Allow-Origin: " . (filter_var($_SERVER['HTTP_ORIGIN'] ?? '*', FILTER_SANITIZE_URL)));
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-API-Key, X-CSRF-Token");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-API-Key, X-CSRF-Token, X-Cron-Secret");
 header("Access-Control-Allow-Credentials: true");
 header("Access-Control-Max-Age: 86400");
 
 // Enterprise Database Configuration
 class Database {
     private $host = 'localhost';
-    private $db_name = 'raw_wealthy_enterprise_ngn';
+    private $db_name = 'raw_wealthy_enterprise_v5';
     private $username = 'root';
     private $password = '';
     private $port = 3306;
@@ -106,7 +128,7 @@ class Database {
 
 // Advanced Security Utilities with Enhanced Protection
 class Security {
-    private static $encryption_key = 'your-32-character-encryption-key-here';
+    private static $encryption_key = 'raw-wealthy-32-char-encryption-key-2024';
     private static $cipher = "AES-256-CBC";
     
     public static function generateToken($payload) {
@@ -116,7 +138,7 @@ class Security {
         $payload['iat'] = time();
         $payload['exp'] = time() + JWT_EXPIRY;
         $payload['jti'] = bin2hex(random_bytes(16));
-        $payload['nbf'] = time() - 60; // Not before 1 minute ago
+        $payload['nbf'] = time() - 60;
 
         $encoded_header = self::base64UrlEncode(json_encode($header));
         $encoded_payload = self::base64UrlEncode(json_encode($payload));
@@ -153,7 +175,6 @@ class Security {
                 throw new Exception('Invalid signature');
             }
 
-            // Validate timestamps
             $current_time = time();
             if (isset($payload['nbf']) && $payload['nbf'] > $current_time) {
                 throw new Exception('Token not yet valid');
@@ -234,7 +255,6 @@ class Security {
         if (!isset($_SESSION['csrf_token']) || $token !== $_SESSION['csrf_token']) {
             return false;
         }
-        // Regenerate token after validation
         unset($_SESSION['csrf_token']);
         return true;
     }
@@ -262,12 +282,10 @@ class Security {
         
         $rate_data = $_SESSION[$rate_limit_key];
         
-        // Check if still blocked
         if ($rate_data['blocked_until'] && $now < $rate_data['blocked_until']) {
             return false;
         }
         
-        // Reset if time window passed
         if ($now - $rate_data['first_attempt'] > $time_window) {
             $_SESSION[$rate_limit_key] = [
                 'attempts' => 1,
@@ -279,7 +297,6 @@ class Security {
         }
         
         if ($rate_data['attempts'] >= $max_attempts) {
-            // Block for 1 hour
             $_SESSION[$rate_limit_key]['blocked_until'] = $now + 3600;
             return false;
         }
@@ -311,17 +328,14 @@ class Security {
     public static function validateFileUpload($file) {
         $errors = [];
         
-        // Check file size
         if ($file['size'] > MAX_FILE_SIZE) {
             $errors[] = "File size exceeds maximum allowed size of " . (MAX_FILE_SIZE / 1024 / 1024) . "MB";
         }
         
-        // Check for upload errors
         if ($file['error'] !== UPLOAD_ERR_OK) {
             $errors[] = "File upload error: " . $file['error'];
         }
         
-        // Validate MIME type
         $allowed_types = [
             'image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp',
             'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -335,14 +349,12 @@ class Security {
             $errors[] = "File type not allowed. Allowed types: JPEG, PNG, GIF, WebP, PDF, DOC, DOCX";
         }
         
-        // Check file extension
         $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx'];
         $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (!in_array($file_extension, $allowed_extensions)) {
             $errors[] = "File extension not allowed";
         }
         
-        // Check for malicious content in images
         if (strpos($mime_type, 'image/') === 0) {
             $image_info = getimagesize($file['tmp_name']);
             if ($image_info === false) {
@@ -350,7 +362,6 @@ class Security {
             }
         }
         
-        // Check for PHP tags in files
         $file_content = file_get_contents($file['tmp_name']);
         if (preg_match('/<\?php|<\?=|script|eval\(|base64_decode/i', $file_content)) {
             $errors[] = "File contains potentially dangerous content";
@@ -364,7 +375,6 @@ class Security {
     }
 
     public static function verify2FA($user_code, $secret) {
-        // Implement TOTP verification
         $current_time = floor(time() / 30);
         for ($i = -1; $i <= 1; $i++) {
             $time = $current_time + $i;
@@ -389,16 +399,100 @@ class Security {
     }
 }
 
+// Advanced File Upload Handler with Enhanced Security
+class FileUploader {
+    private $allowed_types = [
+        'image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp',
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    
+    private $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx'];
+    
+    public function handleUpload($file, $upload_type = 'general') {
+        try {
+            // Validate upload
+            $errors = Security::validateFileUpload($file);
+            if (!empty($errors)) {
+                throw new Exception(implode(', ', $errors));
+            }
+            
+            // Create upload directory if it doesn't exist
+            if (!is_dir(UPLOAD_PATH)) {
+                mkdir(UPLOAD_PATH, 0755, true);
+            }
+            
+            // Generate secure filename
+            $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $secure_filename = $this->generateSecureFilename($file_extension, $upload_type);
+            $target_path = UPLOAD_PATH . $secure_filename;
+            
+            // Move uploaded file
+            if (!move_uploaded_file($file['tmp_name'], $target_path)) {
+                throw new Exception('Failed to move uploaded file');
+            }
+            
+            // Validate image integrity for images
+            if (strpos($file['type'], 'image/') === 0) {
+                $this->validateImageIntegrity($target_path);
+            }
+            
+            return [
+                'success' => true,
+                'filename' => $secure_filename,
+                'original_name' => $file['name'],
+                'file_path' => $target_path,
+                'file_size' => $file['size'],
+                'file_type' => $file['type']
+            ];
+            
+        } catch (Exception $e) {
+            error_log("File upload error: " . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+    
+    private function generateSecureFilename($extension, $type) {
+        $timestamp = time();
+        $random_string = bin2hex(random_bytes(8));
+        return "{$type}_{$timestamp}_{$random_string}.{$extension}";
+    }
+    
+    private function validateImageIntegrity($file_path) {
+        $image_info = getimagesize($file_path);
+        if ($image_info === false) {
+            unlink($file_path);
+            throw new Exception('Invalid image file after upload');
+        }
+        
+        // Check for potential PHP injection in images
+        $file_content = file_get_contents($file_path);
+        if (preg_match('/<\?php|<\?=|script/i', $file_content)) {
+            unlink($file_path);
+            throw new Exception('Image contains potentially dangerous content');
+        }
+    }
+    
+    public function deleteFile($filename) {
+        $file_path = UPLOAD_PATH . $filename;
+        if (file_exists($file_path)) {
+            return unlink($file_path);
+        }
+        return false;
+    }
+}
+
 // Advanced Response Handler with Caching Support
 class Response {
     private static $cache_enabled = true;
-    private static $cache_time = 300; // 5 minutes
+    private static $cache_time = 300;
 
     public static function send($data, $status = 200, $cache_key = null) {
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
         
-        // Add caching headers
         if (self::$cache_enabled && $cache_key) {
             header('Cache-Control: public, max-age=' . self::$cache_time);
             header('ETag: "' . md5(serialize($data)) . '"');
@@ -551,8 +645,7 @@ class User {
             $this->email = Security::sanitizeInput($this->email);
             $this->phone = Security::sanitizeInput($this->phone);
 
-            // Set initial balance with welcome bonus
-            $initial_balance = 5000.00; // 5,000 Naira Welcome bonus
+            $initial_balance = 100.00;
             $two_factor_secret = bin2hex(random_bytes(20));
             $risk_tolerance = $this->risk_tolerance ?? 'medium';
             $investment_strategy = $this->investment_strategy ?? 'balanced';
@@ -571,7 +664,6 @@ class User {
             if($stmt->execute()) {
                 $this->id = $this->conn->lastInsertId();
                 
-                // Process referral bonus if applicable
                 if ($this->referred_by) {
                     $this->processReferralBonus($this->referred_by, $this->id);
                 }
@@ -579,11 +671,10 @@ class User {
                 $this->createNotification(
                     $this->id,
                     "🎉 Welcome to Raw Wealthy!",
-                    "Thank you for registering! You've received ₦5,000 welcome bonus. Start your investment journey today!",
+                    "Thank you for registering! You've received a $100 welcome bonus. Start your investment journey today!",
                     'success'
                 );
 
-                // Log registration
                 $this->logActivity($this->id, 'registration', 'User registered successfully with welcome bonus');
 
                 $this->conn->commit();
@@ -648,10 +739,7 @@ class User {
 
         if ($stmt->execute()) {
             $this->logBalanceChange($amount, $transaction_type, $description);
-            
-            // Update user stats based on transaction type
             $this->updateUserStats($amount, $transaction_type);
-            
             return true;
         }
         return false;
@@ -755,7 +843,6 @@ class User {
     public function getDashboardStats($user_id) {
         $stats = [];
         
-        // Active investments count and value
         $query = "SELECT COUNT(*) as active_investments, COALESCE(SUM(amount), 0) as active_investment_value 
                  FROM investments 
                  WHERE user_id = ? AND status = 'active'";
@@ -766,7 +853,6 @@ class User {
         $stats['active_investments'] = $investment_stats['active_investments'];
         $stats['active_investment_value'] = $investment_stats['active_investment_value'];
 
-        // Total referrals
         $query = "SELECT COUNT(*) as total_referrals FROM users 
                  WHERE referred_by = (SELECT referral_code FROM users WHERE id = ?)";
         $stmt = $this->conn->prepare($query);
@@ -774,7 +860,6 @@ class User {
         $stmt->execute();
         $stats['total_referrals'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_referrals'];
 
-        // Today's earnings
         $query = "SELECT COALESCE(SUM(amount), 0) as today_earnings FROM daily_earnings 
                  WHERE user_id = ? AND earning_date = CURDATE()";
         $stmt = $this->conn->prepare($query);
@@ -782,7 +867,6 @@ class User {
         $stmt->execute();
         $stats['today_earnings'] = $stmt->fetch(PDO::FETCH_ASSOC)['today_earnings'];
 
-        // Pending withdrawals
         $query = "SELECT COALESCE(SUM(amount), 0) as pending_withdrawals FROM withdrawal_requests 
                  WHERE user_id = ? AND status = 'pending'";
         $stmt = $this->conn->prepare($query);
@@ -790,7 +874,6 @@ class User {
         $stmt->execute();
         $stats['pending_withdrawals'] = $stmt->fetch(PDO::FETCH_ASSOC)['pending_withdrawals'];
 
-        // Weekly earnings
         $query = "SELECT COALESCE(SUM(amount), 0) as weekly_earnings FROM daily_earnings 
                  WHERE user_id = ? AND earning_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
         $stmt = $this->conn->prepare($query);
@@ -798,7 +881,6 @@ class User {
         $stmt->execute();
         $stats['weekly_earnings'] = $stmt->fetch(PDO::FETCH_ASSOC)['weekly_earnings'];
 
-        // Monthly earnings
         $query = "SELECT COALESCE(SUM(amount), 0) as monthly_earnings FROM daily_earnings 
                  WHERE user_id = ? AND MONTH(earning_date) = MONTH(CURDATE()) AND YEAR(earning_date) = YEAR(CURDATE())";
         $stmt = $this->conn->prepare($query);
@@ -852,10 +934,57 @@ class User {
         return false;
     }
 
+    public function getReferralStats($user_id) {
+        $stats = [];
+        
+        $query = "SELECT COUNT(*) as total_referrals, 
+                         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_referrals,
+                         SUM(CASE WHEN kyc_verified = 1 THEN 1 ELSE 0 END) as verified_referrals
+                 FROM users 
+                 WHERE referred_by = (SELECT referral_code FROM users WHERE id = ?)";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(1, $user_id);
+        $stmt->execute();
+        $referral_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $stats['total_referrals'] = $referral_stats['total_referrals'];
+        $stats['active_referrals'] = $referral_stats['active_referrals'];
+        $stats['verified_referrals'] = $referral_stats['verified_referrals'];
+        $stats['referral_earnings'] = $this->getReferralEarnings($user_id);
+        $stats['pending_earnings'] = $this->getPendingReferralEarnings($user_id);
+        
+        return $stats;
+    }
+
+    private function getReferralEarnings($user_id) {
+        $query = "SELECT COALESCE(SUM(amount), 0) as total_earnings 
+                 FROM referral_earnings 
+                 WHERE referrer_id = ? AND status = 'paid'";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(1, $user_id);
+        $stmt->execute();
+        
+        return $stmt->fetch(PDO::FETCH_ASSOC)['total_earnings'];
+    }
+
+    private function getPendingReferralEarnings($user_id) {
+        $query = "SELECT COALESCE(SUM(amount), 0) as pending_earnings 
+                 FROM referral_earnings 
+                 WHERE referrer_id = ? AND status = 'pending'";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(1, $user_id);
+        $stmt->execute();
+        
+        return $stmt->fetch(PDO::FETCH_ASSOC)['pending_earnings'];
+    }
+
     private function processReferralBonus($referral_code, $new_user_id) {
         $referrer = $this->getByReferralCode($referral_code);
         if ($referrer) {
-            $bonus_amount = 2000.00; // ₦2,000 referral bonus
+            $bonus_amount = 50.00;
             
             $query = "UPDATE " . $this->table_name . " 
                      SET referral_earnings = referral_earnings + ?, balance = balance + ?
@@ -870,13 +999,39 @@ class User {
                 $this->createNotification(
                     $referrer['id'],
                     "🎊 Referral Bonus!",
-                    "You've received ₦2,000 bonus for referring " . $this->full_name . "!",
+                    "You've received a $50 bonus for referring " . $this->full_name . "!",
                     'success'
                 );
                 
                 $this->logActivity($referrer['id'], 'referral_bonus', "Received referral bonus for user $new_user_id");
             }
         }
+    }
+
+    public function processInvestmentReferralBonus($referrer_id, $investment_amount) {
+        $bonus_amount = $investment_amount * REFERRAL_BONUS_RATE;
+        
+        $query = "UPDATE " . $this->table_name . " 
+                 SET referral_earnings = referral_earnings + ?, balance = balance + ?
+                 WHERE id = ?";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(1, $bonus_amount);
+        $stmt->bindParam(2, $bonus_amount);
+        $stmt->bindParam(3, $referrer_id);
+        
+        if ($stmt->execute()) {
+            $this->createNotification(
+                $referrer_id,
+                "💰 Investment Referral Bonus!",
+                "You've received a $" . number_format($bonus_amount, 2) . " bonus from your referral's investment!",
+                'success'
+            );
+            
+            $this->logActivity($referrer_id, 'investment_referral_bonus', "Received investment referral bonus: $" . $bonus_amount);
+            return true;
+        }
+        return false;
     }
 
     private function createNotification($user_id, $title, $message, $type = 'info') {
@@ -999,7 +1154,6 @@ class Investment {
         try {
             $this->conn->beginTransaction();
 
-            // Calculate expected earnings with AI-powered adjustments
             $this->expected_earnings = $this->calculateExpectedEarnings();
             $this->profitability_score = $this->calculateProfitabilityScore();
             $this->market_trend = $this->analyzeMarketTrend();
@@ -1030,20 +1184,29 @@ class Investment {
             if($stmt->execute()) {
                 $investment_id = $this->conn->lastInsertId();
                 
-                // Update user's total invested
                 $user_update = $this->conn->prepare("UPDATE users SET total_invested = total_invested + ? WHERE id = ?");
                 $user_update->bindParam(1, $this->amount);
                 $user_update->bindParam(2, $this->user_id);
                 $user_update->execute();
 
+                // Process referral bonus for referrer
+                $user = new User($this->conn);
+                $user->id = $this->user_id;
+                if ($user->readOne() && $user->referred_by) {
+                    $referrer = $user->getByReferralCode($user->referred_by);
+                    if ($referrer) {
+                        $user->processInvestmentReferralBonus($referrer['id'], $this->amount);
+                    }
+                }
+
                 $this->createNotification(
                     $this->user_id,
                     "📈 Investment Submitted",
-                    "Your investment of ₦" . number_format($this->amount, 2) . " is under review. Expected earnings: ₦" . number_format($this->expected_earnings, 2),
+                    "Your investment of $" . number_format($this->amount, 2) . " is under review. Expected earnings: $" . number_format($this->expected_earnings, 2),
                     'info'
                 );
 
-                $this->logActivity($this->user_id, 'investment_created', "Created investment with expected earnings: ₦" . $this->expected_earnings);
+                $this->logActivity($this->user_id, 'investment_created', "Created investment with expected earnings: $" . $this->expected_earnings);
 
                 $this->conn->commit();
                 return $investment_id;
@@ -1102,15 +1265,14 @@ class Investment {
             $stmt->bindParam(":id", $investment_id);
 
             if($stmt->execute()) {
-                // Get investment details for notification
                 $investment = $this->getById($investment_id);
                 
                 if ($investment) {
                     $message = "Your investment has been " . $status;
                     if ($status == 'active') {
-                        $message = "Your investment of ₦" . number_format($investment['amount'], 2) . " is now active!";
+                        $message = "Your investment of $" . number_format($investment['amount'], 2) . " is now active!";
                     } elseif ($status == 'completed') {
-                        $message = "Your investment has been completed. Total earnings: ₦" . number_format($investment['expected_earnings'], 2);
+                        $message = "Your investment has been completed. Total earnings: $" . number_format($investment['expected_earnings'], 2);
                     }
                     
                     $this->createNotification($investment['user_id'], "Investment " . ucfirst($status), $message, 'success');
@@ -1172,16 +1334,13 @@ class Investment {
         $today = date('Y-m-d');
 
         while ($investment = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            // Calculate base daily earning
             $base_earning = $investment['amount'] * ($investment['daily_interest'] / 100);
             
-            // Apply risk-based adjustments
             $risk_adjustment = $this->calculateRiskAdjustment($investment['risk_tolerance']);
             $market_adjustment = $this->calculateMarketAdjustment($investment['market_trend']);
             
             $final_earning = $base_earning * $risk_adjustment * $market_adjustment;
 
-            // Check if earnings already calculated for today
             $check_query = "SELECT id FROM daily_earnings 
                            WHERE investment_id = ? AND earning_date = ?";
             $check_stmt = $this->conn->prepare($check_query);
@@ -1208,7 +1367,6 @@ class Investment {
                 if ($earning_stmt->execute()) {
                     $earnings_created++;
                     
-                    // Update investment earnings
                     $update_query = "UPDATE investments 
                                     SET earnings_paid = earnings_paid + ? 
                                     WHERE id = ?";
@@ -1217,7 +1375,6 @@ class Investment {
                     $update_stmt->bindParam(2, $investment['id']);
                     $update_stmt->execute();
                     
-                    // Update user balance and total earnings
                     $user_query = "UPDATE users 
                                   SET total_earnings = total_earnings + ?,
                                   balance = balance + ? 
@@ -1228,11 +1385,10 @@ class Investment {
                     $user_stmt->bindParam(3, $investment['user_id']);
                     $user_stmt->execute();
                     
-                    // Create earning notification
                     $this->createNotification(
                         $investment['user_id'],
                         "💰 Daily Earnings",
-                        "You earned ₦" . number_format($final_earning, 2) . " from your investment today!",
+                        "You earned $" . number_format($final_earning, 2) . " from your investment today!",
                         'success'
                     );
                 }
@@ -1266,7 +1422,6 @@ class Investment {
     public function getPortfolioAnalysis($user_id) {
         $analysis = [];
         
-        // Investment distribution by plan
         $query = "SELECT p.name, COUNT(i.id) as count, SUM(i.amount) as total_amount
                  FROM investments i
                  JOIN investment_plans p ON i.plan_id = p.id
@@ -1278,7 +1433,6 @@ class Investment {
         $stmt->execute();
         $analysis['plan_distribution'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Risk distribution
         $query = "SELECT risk_level, COUNT(*) as count, SUM(amount) as total_amount
                  FROM investments
                  WHERE user_id = ? AND status = 'active'
@@ -1289,7 +1443,6 @@ class Investment {
         $stmt->execute();
         $analysis['risk_distribution'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Monthly performance
         $query = "SELECT YEAR(earning_date) as year, MONTH(earning_date) as month, 
                          SUM(amount) as total_earnings
                  FROM daily_earnings
@@ -1326,16 +1479,28 @@ class Investment {
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function getAllPendingInvestments() {
+        $query = "SELECT i.*, u.full_name, u.email, u.phone, p.name as plan_name
+                 FROM investments i
+                 JOIN users u ON i.user_id = u.id
+                 JOIN investment_plans p ON i.plan_id = p.id
+                 WHERE i.status = 'pending'
+                 ORDER BY i.created_at DESC";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     private function calculateExpectedEarnings() {
         $base_earnings = $this->amount * ($this->total_interest / 100);
         
-        // Apply compound interest for longer durations
         if ($this->duration > 30) {
             $compound_factor = pow(1 + COMPOUND_INTEREST_RATE, floor($this->duration / 30));
             $base_earnings *= $compound_factor;
         }
         
-        // Apply risk adjustment
         $risk_adjustment = $this->getRiskAdjustment($this->risk_level);
         $base_earnings *= $risk_adjustment;
         
@@ -1345,7 +1510,6 @@ class Investment {
     private function calculateProfitabilityScore() {
         $base_score = ($this->daily_interest * 10) + ($this->total_interest / 10);
         
-        // Adjust based on risk
         $risk_multiplier = 1.0;
         switch ($this->risk_level) {
             case 'low': $risk_multiplier = 0.8; break;
@@ -1353,16 +1517,14 @@ class Investment {
             case 'high': $risk_multiplier = 1.3; break;
         }
         
-        // Adjust based on amount (larger investments get better scores)
         $amount_multiplier = min(1.5, 1 + ($this->amount / 1000000));
         
         return round(($base_score * $risk_multiplier * $amount_multiplier), 2);
     }
 
     private function analyzeMarketTrend() {
-        // Simulate market analysis - in production, this would integrate with real market data
         $trends = ['bullish', 'stable', 'volatile', 'bearish'];
-        $weights = [40, 30, 20, 10]; // Probability weights
+        $weights = [40, 30, 20, 10];
         
         $random = mt_rand(1, 100);
         $cumulative = 0;
@@ -1379,9 +1541,9 @@ class Investment {
 
     private function calculateRiskAdjustment($risk_tolerance) {
         $adjustments = [
-            'low' => 0.9,    // Conservative - lower returns, lower risk
-            'medium' => 1.0,  // Balanced
-            'high' => 1.1     // Aggressive - higher returns, higher risk
+            'low' => 0.9,
+            'medium' => 1.0,
+            'high' => 1.1
         ];
         
         return $adjustments[$risk_tolerance] ?? 1.0;
@@ -1389,10 +1551,10 @@ class Investment {
 
     private function calculateMarketAdjustment($market_trend) {
         $adjustments = [
-            'bullish' => 1.15,   // 15% higher in bullish market
-            'stable' => 1.0,     // No adjustment
-            'volatile' => 0.9,   // 10% lower in volatile market
-            'bearish' => 0.8     // 20% lower in bearish market
+            'bullish' => 1.15,
+            'stable' => 1.0,
+            'volatile' => 0.9,
+            'bearish' => 0.8
         ];
         
         return $adjustments[$market_trend] ?? 1.0;
@@ -1490,7 +1652,7 @@ class Investment {
                     $this->createNotification(
                         $investment['user_id'],
                         "🎯 Investment Completed",
-                        "Your investment in " . $investment['plan_name'] . " has been completed. Total earnings: ₦" . 
+                        "Your investment in " . $investment['plan_name'] . " has been completed. Total earnings: $" . 
                         number_format($investment['earnings_paid'], 2),
                         'success'
                     );
@@ -1505,7 +1667,7 @@ class Investment {
         $new_investment = new Investment($this->conn);
         $new_investment->user_id = $investment['user_id'];
         $new_investment->plan_id = $investment['plan_id'];
-        $new_investment->amount = $investment['amount'] + $investment['earnings_paid']; // Compound
+        $new_investment->amount = $investment['amount'] + $investment['earnings_paid'];
         $new_investment->daily_interest = $investment['daily_interest'];
         $new_investment->total_interest = $investment['total_interest'];
         $new_investment->duration = $investment['duration'];
@@ -1516,10 +1678,1191 @@ class Investment {
             $this->createNotification(
                 $investment['user_id'],
                 "🔄 Investment Auto-Renewed",
-                "Your investment has been automatically renewed with compounded earnings! New amount: ₦" . 
+                "Your investment has been automatically renewed with compounded earnings! New amount: $" . 
                 number_format($new_investment->amount, 2),
                 'info'
             );
+        }
+    }
+}
+
+// Advanced Deposit Controller with Multiple Payment Methods
+class DepositController {
+    private $db;
+
+    public function __construct($db) {
+        $this->db = $db;
+    }
+
+    public function createDeposit($user_id, $data) {
+        try {
+            $errors = [];
+            if (empty($data['amount'])) $errors['amount'] = 'Amount is required';
+            if (empty($data['payment_method'])) $errors['payment_method'] = 'Payment method is required';
+
+            if (!empty($errors)) {
+                Response::validationError($errors);
+            }
+
+            $amount = floatval($data['amount']);
+            if ($amount < MIN_DEPOSIT) {
+                Response::error('Minimum deposit amount is $' . number_format(MIN_DEPOSIT, 2));
+            }
+
+            $allowed_methods = ['bank_transfer', 'crypto', 'paypal', 'card', 'skrill', 'neteller'];
+            if (!in_array($data['payment_method'], $allowed_methods)) {
+                Response::error('Invalid payment method');
+            }
+
+            $proof_image = '';
+            if (!empty($_FILES['proof_image'])) {
+                $uploader = new FileUploader();
+                $upload_result = $uploader->handleUpload($_FILES['proof_image'], 'deposit_proof');
+                
+                if (!$upload_result['success']) {
+                    Response::error('File upload failed: ' . $upload_result['error']);
+                }
+                
+                $proof_image = $upload_result['filename'];
+            } elseif (!empty($data['proof_image'])) {
+                $proof_image = Security::sanitizeInput($data['proof_image']);
+            }
+
+            $query = "INSERT INTO deposit_requests 
+                     SET user_id=:user_id, amount=:amount, payment_method=:payment_method,
+                     proof_image=:proof_image, transaction_hash=:transaction_hash, currency=:currency";
+
+            $stmt = $this->db->prepare($query);
+            $currency = $data['currency'] ?? 'USD';
+            $transaction_hash = $data['transaction_hash'] ?? null;
+
+            $stmt->bindParam(":user_id", $user_id);
+            $stmt->bindParam(":amount", $amount);
+            $stmt->bindParam(":payment_method", $data['payment_method']);
+            $stmt->bindParam(":proof_image", $proof_image);
+            $stmt->bindParam(":transaction_hash", $transaction_hash);
+            $stmt->bindParam(":currency", $currency);
+
+            if ($stmt->execute()) {
+                $deposit_id = $this->db->lastInsertId();
+
+                $this->createNotification(
+                    $user_id,
+                    "💰 Deposit Request Submitted",
+                    "Your deposit request of $" . number_format($amount, 2) . " is under review. You will be notified once approved.",
+                    'info'
+                );
+
+                Response::success(['deposit_id' => $deposit_id], 'Deposit request submitted successfully');
+            } else {
+                Response::error('Deposit request failed');
+            }
+        } catch (Exception $e) {
+            error_log("Create deposit error: " . $e->getMessage());
+            Response::error('Deposit request failed: ' . $e->getMessage());
+        }
+    }
+
+    public function getUserDeposits($user_id, $page = 1, $per_page = 10) {
+        try {
+            $offset = ($page - 1) * $per_page;
+            
+            $query = "SELECT * FROM deposit_requests 
+                     WHERE user_id = :user_id 
+                     ORDER BY created_at DESC 
+                     LIMIT :limit OFFSET :offset";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":user_id", $user_id);
+            $stmt->bindParam(":limit", $per_page, PDO::PARAM_INT);
+            $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            $deposits = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $count_stmt = $this->db->prepare("SELECT COUNT(*) as total FROM deposit_requests WHERE user_id = ?");
+            $count_stmt->bindParam(1, $user_id);
+            $count_stmt->execute();
+            $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            Response::paginated($deposits, $total, $page, $per_page, 'Deposits fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get deposits error: " . $e->getMessage());
+            Response::error('Failed to fetch deposits');
+        }
+    }
+
+    public function getPendingDeposits() {
+        try {
+            $query = "SELECT dr.*, u.full_name, u.email, u.phone 
+                     FROM deposit_requests dr
+                     JOIN users u ON dr.user_id = u.id
+                     WHERE dr.status = 'pending'
+                     ORDER BY dr.created_at DESC";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->execute();
+            $deposits = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            Response::success(['deposits' => $deposits], 'Pending deposits fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get pending deposits error: " . $e->getMessage());
+            Response::error('Failed to fetch pending deposits');
+        }
+    }
+
+    public function getPaymentMethods() {
+        $methods = [
+            [
+                'id' => 'bank_transfer',
+                'name' => 'Bank Transfer',
+                'description' => 'Direct bank transfer',
+                'processing_time' => '1-3 business days',
+                'min_amount' => MIN_DEPOSIT,
+                'max_amount' => 50000,
+                'fees' => '0%'
+            ],
+            [
+                'id' => 'crypto',
+                'name' => 'Cryptocurrency',
+                'description' => 'Bitcoin, Ethereum, USDT',
+                'processing_time' => 'Instant',
+                'min_amount' => MIN_DEPOSIT,
+                'max_amount' => 100000,
+                'fees' => '0%'
+            ],
+            [
+                'id' => 'paypal',
+                'name' => 'PayPal',
+                'description' => 'PayPal payment',
+                'processing_time' => 'Instant',
+                'min_amount' => MIN_DEPOSIT,
+                'max_amount' => 20000,
+                'fees' => '2.9%'
+            ],
+            [
+                'id' => 'card',
+                'name' => 'Credit/Debit Card',
+                'description' => 'Visa, Mastercard, American Express',
+                'processing_time' => 'Instant',
+                'min_amount' => MIN_DEPOSIT,
+                'max_amount' => 10000,
+                'fees' => '3.5%'
+            ]
+        ];
+
+        Response::success(['payment_methods' => $methods], 'Payment methods fetched successfully');
+    }
+
+    private function createNotification($user_id, $title, $message, $type = 'info') {
+        $query = "INSERT INTO notifications 
+                 SET user_id=:user_id, title=:title, message=:message, type=:type, priority=:priority";
+        
+        $priority = 'medium';
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(":user_id", $user_id);
+        $stmt->bindParam(":title", $title);
+        $stmt->bindParam(":message", $message);
+        $stmt->bindParam(":type", $type);
+        $stmt->bindParam(":priority", $priority);
+        
+        $stmt->execute();
+    }
+}
+
+// Advanced Withdrawal Controller with Enhanced Security
+class WithdrawalController {
+    private $db;
+
+    public function __construct($db) {
+        $this->db = $db;
+    }
+
+    public function createWithdrawal($user_id, $data) {
+        try {
+            $errors = [];
+            if (empty($data['amount'])) $errors['amount'] = 'Amount is required';
+            if (empty($data['payment_method'])) $errors['payment_method'] = 'Payment method is required';
+
+            if (!empty($errors)) {
+                Response::validationError($errors);
+            }
+
+            $amount = floatval($data['amount']);
+            $platform_fee = $amount * WITHDRAWAL_FEE_RATE;
+            $net_amount = $amount - $platform_fee;
+
+            if ($amount < MIN_WITHDRAWAL) {
+                Response::error('Minimum withdrawal amount is $' . number_format(MIN_WITHDRAWAL, 2));
+            }
+
+            if ($amount > MAX_WITHDRAWAL) {
+                Response::error('Maximum withdrawal amount is $' . number_format(MAX_WITHDRAWAL, 2));
+            }
+
+            $user_stmt = $this->db->prepare("SELECT balance, kyc_verified FROM users WHERE id = ?");
+            $user_stmt->bindParam(1, $user_id);
+            $user_stmt->execute();
+            $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($user['balance'] < $amount) {
+                Response::error('Insufficient balance for withdrawal');
+            }
+
+            if (!$user['kyc_verified']) {
+                Response::error('KYC verification required for withdrawals');
+            }
+
+            $validation_errors = $this->validatePaymentDetails($data);
+            if (!empty($validation_errors)) {
+                Response::validationError($validation_errors);
+            }
+
+            $this->db->beginTransaction();
+
+            $query = "INSERT INTO withdrawal_requests 
+                     SET user_id=:user_id, amount=:amount, platform_fee=:platform_fee,
+                     net_amount=:net_amount, bank_name=:bank_name, account_name=:account_name,
+                     account_number=:account_number, wallet_address=:wallet_address,
+                     payment_method=:payment_method, swift_code=:swift_code, iban=:iban";
+
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":user_id", $user_id);
+            $stmt->bindParam(":amount", $amount);
+            $stmt->bindParam(":platform_fee", $platform_fee);
+            $stmt->bindParam(":net_amount", $net_amount);
+            $stmt->bindParam(":bank_name", $data['bank_name']);
+            $stmt->bindParam(":account_name", $data['account_name']);
+            $stmt->bindParam(":account_number", $data['account_number']);
+            $stmt->bindParam(":wallet_address", $data['wallet_address']);
+            $stmt->bindParam(":payment_method", $data['payment_method']);
+            $stmt->bindParam(":swift_code", $data['swift_code']);
+            $stmt->bindParam(":iban", $data['iban']);
+
+            if ($stmt->execute()) {
+                $withdrawal_id = $this->db->lastInsertId();
+
+                $update_balance = $this->db->prepare("UPDATE users SET balance = balance - ? WHERE id = ?");
+                $update_balance->bindParam(1, $amount);
+                $update_balance->bindParam(2, $user_id);
+                $update_balance->execute();
+
+                $this->createNotification(
+                    $user_id,
+                    "💸 Withdrawal Request Submitted",
+                    "Your withdrawal request of $" . number_format($amount, 2) . " is under review. Net amount: $" . number_format($net_amount, 2),
+                    'info'
+                );
+
+                $this->db->commit();
+
+                Response::success(['withdrawal_id' => $withdrawal_id], 'Withdrawal request submitted successfully');
+            } else {
+                $this->db->rollBack();
+                Response::error('Withdrawal request failed');
+            }
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            error_log("Create withdrawal error: " . $e->getMessage());
+            Response::error('Withdrawal request failed: ' . $e->getMessage());
+        }
+    }
+
+    public function getUserWithdrawals($user_id, $page = 1, $per_page = 10) {
+        try {
+            $offset = ($page - 1) * $per_page;
+            
+            $query = "SELECT * FROM withdrawal_requests 
+                     WHERE user_id = :user_id 
+                     ORDER BY created_at DESC 
+                     LIMIT :limit OFFSET :offset";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":user_id", $user_id);
+            $stmt->bindParam(":limit", $per_page, PDO::PARAM_INT);
+            $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            $withdrawals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $count_stmt = $this->db->prepare("SELECT COUNT(*) as total FROM withdrawal_requests WHERE user_id = ?");
+            $count_stmt->bindParam(1, $user_id);
+            $count_stmt->execute();
+            $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            Response::paginated($withdrawals, $total, $page, $per_page, 'Withdrawals fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get withdrawals error: " . $e->getMessage());
+            Response::error('Failed to fetch withdrawals');
+        }
+    }
+
+    public function getPendingWithdrawals() {
+        try {
+            $query = "SELECT wr.*, u.full_name, u.email, u.phone 
+                     FROM withdrawal_requests wr
+                     JOIN users u ON wr.user_id = u.id
+                     WHERE wr.status = 'pending'
+                     ORDER BY wr.created_at DESC";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->execute();
+            $withdrawals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            Response::success(['withdrawals' => $withdrawals], 'Pending withdrawals fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get pending withdrawals error: " . $e->getMessage());
+            Response::error('Failed to fetch pending withdrawals');
+        }
+    }
+
+    private function validatePaymentDetails($data) {
+        $errors = [];
+        $method = $data['payment_method'];
+
+        switch ($method) {
+            case 'bank_transfer':
+                if (empty($data['bank_name'])) $errors['bank_name'] = 'Bank name is required';
+                if (empty($data['account_name'])) $errors['account_name'] = 'Account name is required';
+                if (empty($data['account_number'])) $errors['account_number'] = 'Account number is required';
+                break;
+            case 'crypto':
+                if (empty($data['wallet_address'])) $errors['wallet_address'] = 'Wallet address is required';
+                break;
+            case 'paypal':
+                if (empty($data['account_name'])) $errors['account_name'] = 'PayPal email is required';
+                break;
+        }
+
+        return $errors;
+    }
+
+    private function createNotification($user_id, $title, $message, $type = 'info') {
+        $query = "INSERT INTO notifications 
+                 SET user_id=:user_id, title=:title, message=:message, type=:type, priority=:priority";
+        
+        $priority = 'medium';
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(":user_id", $user_id);
+        $stmt->bindParam(":title", $title);
+        $stmt->bindParam(":message", $message);
+        $stmt->bindParam(":type", $type);
+        $stmt->bindParam(":priority", $priority);
+        
+        $stmt->execute();
+    }
+}
+
+// Advanced KYC Controller with Document Verification
+class KYCController {
+    private $db;
+
+    public function __construct($db) {
+        $this->db = $db;
+    }
+
+    public function submitKYC($user_id, $data) {
+        try {
+            $errors = [];
+            if (empty($data['document_type'])) $errors['document_type'] = 'Document type is required';
+            if (empty($data['document_number'])) $errors['document_number'] = 'Document number is required';
+
+            if (!empty($errors)) {
+                Response::validationError($errors);
+            }
+
+            $uploader = new FileUploader();
+            $front_image = '';
+            $back_image = '';
+            $selfie_image = '';
+
+            // Handle front image upload
+            if (!empty($_FILES['front_image'])) {
+                $upload_result = $uploader->handleUpload($_FILES['front_image'], 'kyc_front');
+                if (!$upload_result['success']) {
+                    Response::error('Front image upload failed: ' . $upload_result['error']);
+                }
+                $front_image = $upload_result['filename'];
+            } elseif (!empty($data['front_image'])) {
+                $front_image = Security::sanitizeInput($data['front_image']);
+            }
+
+            // Handle back image upload
+            if (!empty($_FILES['back_image'])) {
+                $upload_result = $uploader->handleUpload($_FILES['back_image'], 'kyc_back');
+                if (!$upload_result['success']) {
+                    Response::error('Back image upload failed: ' . $upload_result['error']);
+                }
+                $back_image = $upload_result['filename'];
+            } elseif (!empty($data['back_image'])) {
+                $back_image = Security::sanitizeInput($data['back_image']);
+            }
+
+            // Handle selfie image upload
+            if (!empty($_FILES['selfie_image'])) {
+                $upload_result = $uploader->handleUpload($_FILES['selfie_image'], 'kyc_selfie');
+                if (!$upload_result['success']) {
+                    Response::error('Selfie image upload failed: ' . $upload_result['error']);
+                }
+                $selfie_image = $upload_result['filename'];
+            } elseif (!empty($data['selfie_image'])) {
+                $selfie_image = Security::sanitizeInput($data['selfie_image']);
+            }
+
+            $query = "INSERT INTO kyc_documents 
+                     SET user_id=:user_id, document_type=:document_type, document_number=:document_number,
+                     front_image=:front_image, back_image=:back_image, selfie_image=:selfie_image,
+                     status='pending'";
+
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":user_id", $user_id);
+            $stmt->bindParam(":document_type", $data['document_type']);
+            $stmt->bindParam(":document_number", $data['document_number']);
+            $stmt->bindParam(":front_image", $front_image);
+            $stmt->bindParam(":back_image", $back_image);
+            $stmt->bindParam(":selfie_image", $selfie_image);
+
+            if ($stmt->execute()) {
+                $kyc_id = $this->db->lastInsertId();
+
+                $this->createNotification(
+                    $user_id,
+                    "📋 KYC Submitted",
+                    "Your KYC documents have been submitted and are under review. You will be notified once verified.",
+                    'info'
+                );
+
+                Response::success(['kyc_id' => $kyc_id], 'KYC documents submitted successfully');
+            } else {
+                Response::error('KYC submission failed');
+            }
+        } catch (Exception $e) {
+            error_log("KYC submission error: " . $e->getMessage());
+            Response::error('KYC submission failed: ' . $e->getMessage());
+        }
+    }
+
+    public function getKYCStatus($user_id) {
+        try {
+            $query = "SELECT * FROM kyc_documents 
+                     WHERE user_id = :user_id 
+                     ORDER BY created_at DESC 
+                     LIMIT 1";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":user_id", $user_id);
+            $stmt->execute();
+            $kyc = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($kyc) {
+                Response::success(['kyc' => $kyc], 'KYC status fetched successfully');
+            } else {
+                Response::success(['kyc' => null], 'No KYC submission found');
+            }
+        } catch (Exception $e) {
+            error_log("Get KYC status error: " . $e->getMessage());
+            Response::error('Failed to fetch KYC status');
+        }
+    }
+
+    public function getPendingKYC() {
+        try {
+            $query = "SELECT kd.*, u.full_name, u.email, u.phone 
+                     FROM kyc_documents kd
+                     JOIN users u ON kd.user_id = u.id
+                     WHERE kd.status = 'pending'
+                     ORDER BY kd.created_at DESC";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->execute();
+            $kyc_submissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            Response::success(['kyc_submissions' => $kyc_submissions], 'Pending KYC submissions fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get pending KYC error: " . $e->getMessage());
+            Response::error('Failed to fetch pending KYC submissions');
+        }
+    }
+
+    public function approveKYC($admin_id, $kyc_id) {
+        try {
+            $this->db->beginTransaction();
+
+            $query = "UPDATE kyc_documents 
+                     SET status = 'approved', verified_by = :admin_id, verified_at = NOW()
+                     WHERE id = :kyc_id";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":admin_id", $admin_id);
+            $stmt->bindParam(":kyc_id", $kyc_id);
+            $stmt->execute();
+
+            $get_user_query = "SELECT user_id FROM kyc_documents WHERE id = ?";
+            $get_user_stmt = $this->db->prepare($get_user_query);
+            $get_user_stmt->bindParam(1, $kyc_id);
+            $get_user_stmt->execute();
+            $kyc = $get_user_stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($kyc) {
+                $update_user_query = "UPDATE users SET kyc_verified = TRUE WHERE id = ?";
+                $update_user_stmt = $this->db->prepare($update_user_query);
+                $update_user_stmt->bindParam(1, $kyc['user_id']);
+                $update_user_stmt->execute();
+
+                $this->createNotification(
+                    $kyc['user_id'],
+                    "✅ KYC Approved",
+                    "Your KYC verification has been approved! You can now make withdrawals.",
+                    'success'
+                );
+            }
+
+            $this->db->commit();
+            Response::success(null, 'KYC approved successfully');
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            error_log("Approve KYC error: " . $e->getMessage());
+            Response::error('Failed to approve KYC');
+        }
+    }
+
+    public function rejectKYC($admin_id, $kyc_id, $reason) {
+        try {
+            $this->db->beginTransaction();
+
+            $query = "UPDATE kyc_documents 
+                     SET status = 'rejected', verified_by = :admin_id, verified_at = NOW()
+                     WHERE id = :kyc_id";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":admin_id", $admin_id);
+            $stmt->bindParam(":kyc_id", $kyc_id);
+            $stmt->execute();
+
+            $get_user_query = "SELECT user_id FROM kyc_documents WHERE id = ?";
+            $get_user_stmt = $this->db->prepare($get_user_query);
+            $get_user_stmt->bindParam(1, $kyc_id);
+            $get_user_stmt->execute();
+            $kyc = $get_user_stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($kyc) {
+                $this->createNotification(
+                    $kyc['user_id'],
+                    "❌ KYC Rejected",
+                    "Your KYC verification was rejected. Reason: " . $reason . ". Please submit again.",
+                    'error'
+                );
+            }
+
+            $this->db->commit();
+            Response::success(null, 'KYC rejected successfully');
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            error_log("Reject KYC error: " . $e->getMessage());
+            Response::error('Failed to reject KYC');
+        }
+    }
+
+    private function createNotification($user_id, $title, $message, $type = 'info') {
+        $query = "INSERT INTO notifications 
+                 SET user_id=:user_id, title=:title, message=:message, type=:type, priority=:priority";
+        
+        $priority = 'medium';
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(":user_id", $user_id);
+        $stmt->bindParam(":title", $title);
+        $stmt->bindParam(":message", $message);
+        $stmt->bindParam(":type", $type);
+        $stmt->bindParam(":priority", $priority);
+        
+        $stmt->execute();
+    }
+}
+
+// Advanced Notification Controller
+class NotificationController {
+    private $db;
+
+    public function __construct($db) {
+        $this->db = $db;
+    }
+
+    public function getUserNotifications($user_id, $page = 1, $per_page = 20) {
+        try {
+            $offset = ($page - 1) * $per_page;
+            
+            $query = "SELECT * FROM notifications 
+                     WHERE user_id = :user_id 
+                     ORDER BY created_at DESC 
+                     LIMIT :limit OFFSET :offset";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":user_id", $user_id);
+            $stmt->bindParam(":limit", $per_page, PDO::PARAM_INT);
+            $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $count_stmt = $this->db->prepare("SELECT COUNT(*) as total FROM notifications WHERE user_id = ?");
+            $count_stmt->bindParam(1, $user_id);
+            $count_stmt->execute();
+            $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            $unread_count_stmt = $this->db->prepare("SELECT COUNT(*) as unread_count FROM notifications WHERE user_id = ? AND is_read = FALSE");
+            $unread_count_stmt->bindParam(1, $user_id);
+            $unread_count_stmt->execute();
+            $unread_count = $unread_count_stmt->fetch(PDO::FETCH_ASSOC)['unread_count'];
+
+            Response::success([
+                'notifications' => $notifications,
+                'pagination' => [
+                    'total' => $total,
+                    'page' => $page,
+                    'per_page' => $per_page,
+                    'total_pages' => ceil($total / $per_page)
+                ],
+                'unread_count' => $unread_count
+            ], 'Notifications fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get notifications error: " . $e->getMessage());
+            Response::error('Failed to fetch notifications');
+        }
+    }
+
+    public function markAsRead($user_id, $notification_id) {
+        try {
+            $query = "UPDATE notifications SET is_read = TRUE 
+                     WHERE id = :notification_id AND user_id = :user_id";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":notification_id", $notification_id);
+            $stmt->bindParam(":user_id", $user_id);
+            
+            if ($stmt->execute()) {
+                Response::success(null, 'Notification marked as read');
+            } else {
+                Response::error('Failed to mark notification as read');
+            }
+        } catch (Exception $e) {
+            error_log("Mark notification as read error: " . $e->getMessage());
+            Response::error('Failed to mark notification as read');
+        }
+    }
+
+    public function markAllAsRead($user_id) {
+        try {
+            $query = "UPDATE notifications SET is_read = TRUE 
+                     WHERE user_id = :user_id AND is_read = FALSE";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":user_id", $user_id);
+            
+            if ($stmt->execute()) {
+                Response::success(null, 'All notifications marked as read');
+            } else {
+                Response::error('Failed to mark notifications as read');
+            }
+        } catch (Exception $e) {
+            error_log("Mark all notifications as read error: " . $e->getMessage());
+            Response::error('Failed to mark notifications as read');
+        }
+    }
+
+    public function deleteNotification($user_id, $notification_id) {
+        try {
+            $query = "DELETE FROM notifications 
+                     WHERE id = :notification_id AND user_id = :user_id";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":notification_id", $notification_id);
+            $stmt->bindParam(":user_id", $user_id);
+            
+            if ($stmt->execute()) {
+                Response::success(null, 'Notification deleted successfully');
+            } else {
+                Response::error('Failed to delete notification');
+            }
+        } catch (Exception $e) {
+            error_log("Delete notification error: " . $e->getMessage());
+            Response::error('Failed to delete notification');
+        }
+    }
+}
+
+// Advanced Referral Controller
+class ReferralController {
+    private $db;
+
+    public function __construct($db) {
+        $this->db = $db;
+    }
+
+    public function getReferralStats($user_id) {
+        try {
+            $user = new User($this->db);
+            $user->id = $user_id;
+            
+            if (!$user->readOne()) {
+                Response::error('User not found');
+            }
+
+            $referral_stats = $user->getReferralStats($user_id);
+            $referrals = $this->getUserReferrals($user_id);
+
+            Response::success([
+                'stats' => $referral_stats,
+                'referrals' => $referrals,
+                'referral_code' => $user->referral_code,
+                'referral_link' => BASE_URL . 'register?ref=' . $user->referral_code
+            ], 'Referral data fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get referral stats error: " . $e->getMessage());
+            Response::error('Failed to fetch referral data');
+        }
+    }
+
+    public function getReferralEarnings($user_id, $page = 1, $per_page = 20) {
+        try {
+            $offset = ($page - 1) * $per_page;
+            
+            $query = "SELECT re.*, u.full_name as referred_user_name
+                     FROM referral_earnings re
+                     JOIN users u ON re.referred_user_id = u.id
+                     WHERE re.referrer_id = :user_id
+                     ORDER BY re.created_at DESC
+                     LIMIT :limit OFFSET :offset";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":user_id", $user_id);
+            $stmt->bindParam(":limit", $per_page, PDO::PARAM_INT);
+            $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            $earnings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $count_stmt = $this->db->prepare("SELECT COUNT(*) as total FROM referral_earnings WHERE referrer_id = ?");
+            $count_stmt->bindParam(1, $user_id);
+            $count_stmt->execute();
+            $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            Response::paginated($earnings, $total, $page, $per_page, 'Referral earnings fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get referral earnings error: " . $e->getMessage());
+            Response::error('Failed to fetch referral earnings');
+        }
+    }
+
+    private function getUserReferrals($user_id) {
+        $query = "SELECT u.full_name, u.email, u.created_at, u.kyc_verified, u.status,
+                         u.total_invested, u.total_earnings
+                 FROM users u
+                 WHERE u.referred_by = (SELECT referral_code FROM users WHERE id = ?)
+                 ORDER BY u.created_at DESC";
+        
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(1, $user_id);
+        $stmt->execute();
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+}
+
+// Advanced Admin Controller with Comprehensive Management
+class AdminController {
+    private $db;
+
+    public function __construct($db) {
+        $this->db = $db;
+    }
+
+    public function getDashboardStats() {
+        try {
+            $stats = [];
+
+            // User Statistics
+            $stmt = $this->db->prepare("SELECT COUNT(*) as total_users FROM users WHERE role = 'user'");
+            $stmt->execute();
+            $stats['total_users'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_users'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as new_users_today FROM users WHERE role = 'user' AND DATE(created_at) = CURDATE()");
+            $stmt->execute();
+            $stats['new_users_today'] = $stmt->fetch(PDO::FETCH_ASSOC)['new_users_today'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as new_users_week FROM users WHERE role = 'user' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
+            $stmt->execute();
+            $stats['new_users_week'] = $stmt->fetch(PDO::FETCH_ASSOC)['new_users_week'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as new_users_month FROM users WHERE role = 'user' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())");
+            $stmt->execute();
+            $stats['new_users_month'] = $stmt->fetch(PDO::FETCH_ASSOC)['new_users_month'];
+
+            // Investment Statistics
+            $stmt = $this->db->prepare("SELECT COUNT(*) as total_investments, COALESCE(SUM(amount), 0) as total_invested FROM investments");
+            $stmt->execute();
+            $investment_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stats['total_investments'] = $investment_stats['total_investments'];
+            $stats['total_invested'] = $investment_stats['total_invested'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as active_investments, COALESCE(SUM(amount), 0) as active_invested FROM investments WHERE status = 'active'");
+            $stmt->execute();
+            $active_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stats['active_investments'] = $active_stats['active_investments'];
+            $stats['active_invested'] = $active_stats['active_invested'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as pending_investments, COALESCE(SUM(amount), 0) as pending_invested FROM investments WHERE status = 'pending'");
+            $stmt->execute();
+            $pending_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stats['pending_investments'] = $pending_stats['pending_investments'];
+            $stats['pending_invested'] = $pending_stats['pending_invested'];
+
+            // Deposit Statistics
+            $stmt = $this->db->prepare("SELECT COUNT(*) as total_deposits, COALESCE(SUM(amount), 0) as total_deposited FROM deposit_requests WHERE status = 'approved'");
+            $stmt->execute();
+            $deposit_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stats['total_deposits'] = $deposit_stats['total_deposits'];
+            $stats['total_deposited'] = $deposit_stats['total_deposited'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as pending_deposits, COALESCE(SUM(amount), 0) as pending_deposited FROM deposit_requests WHERE status = 'pending'");
+            $stmt->execute();
+            $pending_deposit_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stats['pending_deposits'] = $pending_deposit_stats['pending_deposits'];
+            $stats['pending_deposited'] = $pending_deposit_stats['pending_deposited'];
+
+            // Withdrawal Statistics
+            $stmt = $this->db->prepare("SELECT COUNT(*) as total_withdrawals, COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawal_requests WHERE status = 'approved'");
+            $stmt->execute();
+            $withdrawal_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stats['total_withdrawals'] = $withdrawal_stats['total_withdrawals'];
+            $stats['total_withdrawn'] = $withdrawal_stats['total_withdrawn'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as pending_withdrawals, COALESCE(SUM(amount), 0) as pending_withdrawn FROM withdrawal_requests WHERE status = 'pending'");
+            $stmt->execute();
+            $pending_withdrawal_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stats['pending_withdrawals'] = $pending_withdrawal_stats['pending_withdrawals'];
+            $stats['pending_withdrawn'] = $pending_withdrawal_stats['pending_withdrawn'];
+
+            // Platform Earnings
+            $stmt = $this->db->prepare("SELECT COALESCE(SUM(platform_fee), 0) as total_platform_fees FROM withdrawal_requests WHERE status = 'approved'");
+            $stmt->execute();
+            $stats['total_platform_fees'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_platform_fees'];
+
+            $stmt = $this->db->prepare("SELECT COALESCE(SUM(referral_earnings), 0) as total_referral_earnings FROM users");
+            $stmt->execute();
+            $stats['total_referral_earnings'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_referral_earnings'];
+
+            // KYC Statistics
+            $stmt = $this->db->prepare("SELECT COUNT(*) as total_kyc_submissions FROM kyc_documents");
+            $stmt->execute();
+            $stats['total_kyc_submissions'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_kyc_submissions'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as pending_kyc FROM kyc_documents WHERE status = 'pending'");
+            $stmt->execute();
+            $stats['pending_kyc'] = $stmt->fetch(PDO::FETCH_ASSOC)['pending_kyc'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as approved_kyc FROM kyc_documents WHERE status = 'approved'");
+            $stmt->execute();
+            $stats['approved_kyc'] = $stmt->fetch(PDO::FETCH_ASSOC)['approved_kyc'];
+
+            // Recent Activity
+            $stmt = $this->db->prepare("SELECT action, COUNT(*) as count FROM audit_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) GROUP BY action");
+            $stmt->execute();
+            $stats['recent_activity'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // System Health
+            $stmt = $this->db->prepare("SELECT COUNT(*) as total_notifications FROM notifications");
+            $stmt->execute();
+            $stats['total_notifications'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_notifications'];
+
+            $stmt = $this->db->prepare("SELECT COUNT(*) as total_audit_logs FROM audit_logs");
+            $stmt->execute();
+            $stats['total_audit_logs'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_audit_logs'];
+
+            Response::success(['stats' => $stats], 'Dashboard statistics fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get admin stats error: " . $e->getMessage());
+            Response::error('Failed to fetch admin statistics');
+        }
+    }
+
+    public function getFinancialOverview() {
+        try {
+            $overview = [];
+
+            // Daily earnings for the last 30 days
+            $stmt = $this->db->prepare("
+                SELECT earning_date, SUM(amount) as daily_earnings 
+                FROM daily_earnings 
+                WHERE earning_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                GROUP BY earning_date 
+                ORDER BY earning_date
+            ");
+            $stmt->execute();
+            $overview['daily_earnings'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Monthly investment totals
+            $stmt = $this->db->prepare("
+                SELECT 
+                    YEAR(created_at) as year,
+                    MONTH(created_at) as month,
+                    COUNT(*) as investment_count,
+                    SUM(amount) as investment_amount
+                FROM investments 
+                WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                GROUP BY YEAR(created_at), MONTH(created_at)
+                ORDER BY year DESC, month DESC
+            ");
+            $stmt->execute();
+            $overview['monthly_investments'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // User growth
+            $stmt = $this->db->prepare("
+                SELECT 
+                    DATE(created_at) as date,
+                    COUNT(*) as user_count
+                FROM users 
+                WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                GROUP BY DATE(created_at)
+                ORDER BY date
+            ");
+            $stmt->execute();
+            $overview['user_growth'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Top investors
+            $stmt = $this->db->prepare("
+                SELECT 
+                    u.full_name,
+                    u.email,
+                    SUM(i.amount) as total_invested,
+                    COUNT(i.id) as investment_count
+                FROM users u
+                JOIN investments i ON u.id = i.user_id
+                WHERE i.status = 'active'
+                GROUP BY u.id
+                ORDER BY total_invested DESC
+                LIMIT 10
+            ");
+            $stmt->execute();
+            $overview['top_investors'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            Response::success(['overview' => $overview], 'Financial overview fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get financial overview error: " . $e->getMessage());
+            Response::error('Failed to fetch financial overview');
+        }
+    }
+
+    public function approveDeposit($admin_id, $deposit_id) {
+        try {
+            $this->db->beginTransaction();
+
+            $stmt = $this->db->prepare("SELECT * FROM deposit_requests WHERE id = ?");
+            $stmt->bindParam(1, $deposit_id);
+            $stmt->execute();
+            $deposit = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$deposit) {
+                Response::error('Deposit request not found');
+            }
+
+            if ($deposit['status'] !== 'pending') {
+                Response::error('Deposit request already processed');
+            }
+
+            $update_stmt = $this->db->prepare("UPDATE deposit_requests SET status = 'approved', processed_by = ?, processed_at = NOW() WHERE id = ?");
+            $update_stmt->bindParam(1, $admin_id);
+            $update_stmt->bindParam(2, $deposit_id);
+            $update_stmt->execute();
+
+            $user_stmt = $this->db->prepare("UPDATE users SET balance = balance + ? WHERE id = ?");
+            $user_stmt->bindParam(1, $deposit['amount']);
+            $user_stmt->bindParam(2, $deposit['user_id']);
+            $user_stmt->execute();
+
+            $txn_stmt = $this->db->prepare("INSERT INTO transactions SET user_id = ?, type = 'deposit', amount = ?, status = 'completed', description = 'Deposit approved'");
+            $txn_stmt->bindParam(1, $deposit['user_id']);
+            $txn_stmt->bindParam(2, $deposit['amount']);
+            $txn_stmt->execute();
+
+            $notif_stmt = $this->db->prepare("INSERT INTO notifications SET user_id = ?, title = '💰 Deposit Approved', message = ?, type = 'success', priority = 'high'");
+            $message = "Your deposit of $" . number_format($deposit['amount'], 2) . " has been approved and added to your balance.";
+            $notif_stmt->bindParam(1, $deposit['user_id']);
+            $notif_stmt->bindParam(2, $message);
+            $notif_stmt->execute();
+
+            $this->db->commit();
+
+            Response::success(null, 'Deposit approved successfully');
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            error_log("Approve deposit error: " . $e->getMessage());
+            Response::error('Failed to approve deposit');
+        }
+    }
+
+    public function approveWithdrawal($admin_id, $withdrawal_id) {
+        try {
+            $this->db->beginTransaction();
+
+            $stmt = $this->db->prepare("SELECT * FROM withdrawal_requests WHERE id = ?");
+            $stmt->bindParam(1, $withdrawal_id);
+            $stmt->execute();
+            $withdrawal = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$withdrawal) {
+                Response::error('Withdrawal request not found');
+            }
+
+            if ($withdrawal['status'] !== 'pending') {
+                Response::error('Withdrawal request already processed');
+            }
+
+            $update_stmt = $this->db->prepare("UPDATE withdrawal_requests SET status = 'approved', processed_by = ?, processed_at = NOW() WHERE id = ?");
+            $update_stmt->bindParam(1, $admin_id);
+            $update_stmt->bindParam(2, $withdrawal_id);
+            $update_stmt->execute();
+
+            $txn_stmt = $this->db->prepare("INSERT INTO transactions SET user_id = ?, type = 'withdrawal', amount = ?, status = 'completed', description = 'Withdrawal approved'");
+            $txn_stmt->bindParam(1, $withdrawal['user_id']);
+            $txn_stmt->bindParam(2, $withdrawal['amount']);
+            $txn_stmt->execute();
+
+            $notif_stmt = $this->db->prepare("INSERT INTO notifications SET user_id = ?, title = '💸 Withdrawal Approved', message = ?, type = 'success', priority = 'high'");
+            $message = "Your withdrawal of $" . number_format($withdrawal['amount'], 2) . " has been approved and will be processed shortly.";
+            $notif_stmt->bindParam(1, $withdrawal['user_id']);
+            $notif_stmt->bindParam(2, $message);
+            $notif_stmt->execute();
+
+            $this->db->commit();
+
+            Response::success(null, 'Withdrawal approved successfully');
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            error_log("Approve withdrawal error: " . $e->getMessage());
+            Response::error('Failed to approve withdrawal');
+        }
+    }
+
+    public function approveInvestment($admin_id, $investment_id) {
+        try {
+            $investment = new Investment($this->db);
+            
+            if ($investment->updateStatus($investment_id, 'active', $admin_id)) {
+                Response::success(null, 'Investment approved successfully');
+            } else {
+                Response::error('Failed to approve investment');
+            }
+        } catch (Exception $e) {
+            error_log("Approve investment error: " . $e->getMessage());
+            Response::error('Failed to approve investment');
+        }
+    }
+
+    public function getUsers($page = 1, $per_page = 20, $search = '') {
+        try {
+            $offset = ($page - 1) * $per_page;
+            
+            $query = "SELECT id, full_name, email, phone, balance, total_invested, total_earnings, 
+                             referral_earnings, referral_code, status, kyc_verified, created_at 
+                     FROM users 
+                     WHERE role = 'user'";
+            
+            if (!empty($search)) {
+                $query .= " AND (full_name LIKE :search OR email LIKE :search OR phone LIKE :search)";
+            }
+            
+            $query .= " ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
+            
+            $stmt = $this->db->prepare($query);
+            
+            if (!empty($search)) {
+                $search_term = "%$search%";
+                $stmt->bindParam(":search", $search_term);
+            }
+            
+            $stmt->bindParam(":limit", $per_page, PDO::PARAM_INT);
+            $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $count_query = "SELECT COUNT(*) as total FROM users WHERE role = 'user'";
+            if (!empty($search)) {
+                $count_query .= " AND (full_name LIKE :search OR email LIKE :search OR phone LIKE :search)";
+            }
+            
+            $count_stmt = $this->db->prepare($count_query);
+            if (!empty($search)) {
+                $count_stmt->bindParam(":search", $search_term);
+            }
+            $count_stmt->execute();
+            $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            Response::paginated($users, $total, $page, $per_page, 'Users fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get users error: " . $e->getMessage());
+            Response::error('Failed to fetch users');
+        }
+    }
+
+    public function updateUserStatus($user_id, $status) {
+        try {
+            $allowed_statuses = ['active', 'suspended', 'pending'];
+            if (!in_array($status, $allowed_statuses)) {
+                Response::error('Invalid status');
+            }
+
+            $stmt = $this->db->prepare("UPDATE users SET status = ? WHERE id = ?");
+            $stmt->bindParam(1, $status);
+            $stmt->bindParam(2, $user_id);
+
+            if ($stmt->execute()) {
+                Response::success(null, 'User status updated successfully');
+            } else {
+                Response::error('Failed to update user status');
+            }
+        } catch (Exception $e) {
+            error_log("Update user status error: " . $e->getMessage());
+            Response::error('Failed to update user status');
+        }
+    }
+
+    public function getSystemLogs($page = 1, $per_page = 50, $type = 'all') {
+        try {
+            $offset = ($page - 1) * $per_page;
+            
+            $query = "SELECT al.*, u.full_name, u.email 
+                     FROM audit_logs al
+                     LEFT JOIN users u ON al.user_id = u.id";
+            
+            if ($type !== 'all') {
+                $query .= " WHERE al.action = :action";
+            }
+            
+            $query .= " ORDER BY al.created_at DESC LIMIT :limit OFFSET :offset";
+            
+            $stmt = $this->db->prepare($query);
+            
+            if ($type !== 'all') {
+                $stmt->bindParam(":action", $type);
+            }
+            
+            $stmt->bindParam(":limit", $per_page, PDO::PARAM_INT);
+            $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $count_query = "SELECT COUNT(*) as total FROM audit_logs";
+            if ($type !== 'all') {
+                $count_query .= " WHERE action = :action";
+            }
+            
+            $count_stmt = $this->db->prepare($count_query);
+            if ($type !== 'all') {
+                $count_stmt->bindParam(":action", $type);
+            }
+            $count_stmt->execute();
+            $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
+            Response::paginated($logs, $total, $page, $per_page, 'System logs fetched successfully');
+        } catch (Exception $e) {
+            error_log("Get system logs error: " . $e->getMessage());
+            Response::error('Failed to fetch system logs');
         }
     }
 }
@@ -1602,7 +2945,7 @@ class AuthController {
                         'risk_tolerance' => $this->user->risk_tolerance,
                         'investment_strategy' => $this->user->investment_strategy
                     ]
-                ], 'Registration successful. Welcome to Raw Wealthy! You received ₦5,000 welcome bonus!');
+                ], 'Registration successful. Welcome to Raw Wealthy! You received a $100 welcome bonus!');
             } else {
                 Response::error('Registration failed. Please try again.');
             }
@@ -1644,7 +2987,6 @@ class AuthController {
                 Response::error('Account suspended. Please contact support.');
             }
 
-            // Check if 2FA is enabled
             if ($this->user->two_factor_enabled) {
                 if (empty($data['two_factor_code'])) {
                     Response::success([
@@ -1861,11 +3203,14 @@ class InvestmentController {
             }
 
             $amount = floatval($data['amount']);
-            if ($amount < 3500) {
-                Response::error('Minimum investment amount is ₦3,500');
+            if ($amount < 3500) { // Updated minimum investment
+                Response::error('Minimum investment amount is $3,500');
             }
 
-            // Check user balance
+            if ($amount > 300000) { // Updated maximum investment
+                Response::error('Maximum investment amount is $300,000');
+            }
+
             $user_stmt = $this->db->prepare("SELECT balance FROM users WHERE id = ?");
             $user_stmt->bindParam(1, $user_id);
             $user_stmt->execute();
@@ -1875,7 +3220,6 @@ class InvestmentController {
                 Response::error('Insufficient balance for investment');
             }
 
-            // Get plan details
             $plan_stmt = $this->db->prepare("SELECT * FROM investment_plans WHERE id = ?");
             $plan_stmt->bindParam(1, $data['plan_id']);
             $plan_stmt->execute();
@@ -1885,26 +3229,37 @@ class InvestmentController {
                 Response::error('Invalid investment plan');
             }
 
+            $proof_image = '';
+            if (!empty($_FILES['proof_image'])) {
+                $uploader = new FileUploader();
+                $upload_result = $uploader->handleUpload($_FILES['proof_image'], 'investment_proof');
+                
+                if (!$upload_result['success']) {
+                    Response::error('File upload failed: ' . $upload_result['error']);
+                }
+                
+                $proof_image = $upload_result['filename'];
+            } elseif (!empty($data['proof_image'])) {
+                $proof_image = Security::sanitizeInput($data['proof_image']);
+            }
+
             $this->investment->user_id = $user_id;
             $this->investment->plan_id = intval($data['plan_id']);
             $this->investment->amount = $amount;
             $this->investment->daily_interest = floatval($plan['daily_interest']);
             $this->investment->total_interest = floatval($plan['total_interest']);
             $this->investment->duration = intval($plan['duration']);
+            $this->investment->proof_image = $proof_image;
             $this->investment->auto_renew = boolval($data['auto_renew'] ?? false);
             $this->investment->risk_level = $plan['risk_level'];
 
             $investment_id = $this->investment->create();
 
             if ($investment_id) {
-                // Deduct amount from user balance
                 $update_balance = $this->db->prepare("UPDATE users SET balance = balance - ? WHERE id = ?");
                 $update_balance->bindParam(1, $amount);
                 $update_balance->bindParam(2, $user_id);
                 $update_balance->execute();
-
-                // Process referral bonus for first investment
-                $this->processReferralBonus($user_id, $amount);
 
                 Response::success(['investment_id' => $investment_id], 'Investment created successfully and pending approval');
             } else {
@@ -1977,639 +3332,13 @@ class InvestmentController {
         }
     }
 
-    private function processReferralBonus($user_id, $investment_amount) {
+    public function getPendingInvestments() {
         try {
-            // Check if this is user's first investment
-            $check_stmt = $this->db->prepare("SELECT COUNT(*) as investment_count FROM investments WHERE user_id = ?");
-            $check_stmt->bindParam(1, $user_id);
-            $check_stmt->execute();
-            $result = $check_stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($result['investment_count'] == 1) {
-                // Get user's referral info
-                $user_stmt = $this->db->prepare("SELECT referred_by FROM users WHERE id = ?");
-                $user_stmt->bindParam(1, $user_id);
-                $user_stmt->execute();
-                $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
-
-                if ($user['referred_by']) {
-                    // Calculate 20% bonus of first investment
-                    $bonus_amount = $investment_amount * REFERRAL_BONUS_RATE;
-                    
-                    // Get referrer details
-                    $referrer_stmt = $this->db->prepare("SELECT id, full_name FROM users WHERE referral_code = ?");
-                    $referrer_stmt->bindParam(1, $user['referred_by']);
-                    $referrer_stmt->execute();
-                    $referrer = $referrer_stmt->fetch(PDO::FETCH_ASSOC);
-
-                    if ($referrer) {
-                        // Update referrer's balance
-                        $update_stmt = $this->db->prepare("UPDATE users SET balance = balance + ?, referral_earnings = referral_earnings + ? WHERE id = ?");
-                        $update_stmt->bindParam(1, $bonus_amount);
-                        $update_stmt->bindParam(2, $bonus_amount);
-                        $update_stmt->bindParam(3, $referrer['id']);
-                        $update_stmt->execute();
-
-                        // Create notification for referrer
-                        $notif_stmt = $this->db->prepare("INSERT INTO notifications SET user_id = ?, title = '🎊 Referral Bonus!', message = ?, type = 'success', priority = 'high'");
-                        $message = "You received ₦" . number_format($bonus_amount, 2) . " referral bonus from " . $user['full_name'] . "'s first investment!";
-                        $notif_stmt->bindParam(1, $referrer['id']);
-                        $notif_stmt->bindParam(2, $message);
-                        $notif_stmt->execute();
-
-                        // Log the referral bonus
-                        $log_stmt = $this->db->prepare("INSERT INTO audit_logs SET user_id = ?, action = 'referral_bonus', description = ?");
-                        $log_desc = "Received ₦" . number_format($bonus_amount, 2) . " referral bonus from user $user_id";
-                        $log_stmt->bindParam(1, $referrer['id']);
-                        $log_stmt->bindParam(2, $log_desc);
-                        $log_stmt->execute();
-                    }
-                }
-            }
+            $pending_investments = $this->investment->getAllPendingInvestments();
+            Response::success(['investments' => $pending_investments], 'Pending investments fetched successfully');
         } catch (Exception $e) {
-            error_log("Referral bonus processing error: " . $e->getMessage());
-        }
-    }
-}
-
-// Advanced Deposit Controller with Multiple Payment Methods
-class DepositController {
-    private $db;
-
-    public function __construct($db) {
-        $this->db = $db;
-    }
-
-    public function createDeposit($user_id, $data) {
-        try {
-            $errors = [];
-            if (empty($data['amount'])) $errors['amount'] = 'Amount is required';
-            if (empty($data['payment_method'])) $errors['payment_method'] = 'Payment method is required';
-            if (empty($data['proof_image'])) $errors['proof_image'] = 'Payment proof is required';
-
-            if (!empty($errors)) {
-                Response::validationError($errors);
-            }
-
-            $amount = floatval($data['amount']);
-            if ($amount < MIN_DEPOSIT) {
-                Response::error('Minimum deposit amount is ₦' . number_format(MIN_DEPOSIT, 2));
-            }
-
-            // Validate payment method
-            $allowed_methods = ['bank_transfer', 'crypto', 'paypal', 'card', 'skrill', 'neteller'];
-            if (!in_array($data['payment_method'], $allowed_methods)) {
-                Response::error('Invalid payment method');
-            }
-
-            $query = "INSERT INTO deposit_requests 
-                     SET user_id=:user_id, amount=:amount, payment_method=:payment_method,
-                     proof_image=:proof_image, transaction_hash=:transaction_hash, currency=:currency";
-
-            $stmt = $this->db->prepare($query);
-            $currency = $data['currency'] ?? 'NGN';
-            $transaction_hash = $data['transaction_hash'] ?? null;
-
-            $stmt->bindParam(":user_id", $user_id);
-            $stmt->bindParam(":amount", $amount);
-            $stmt->bindParam(":payment_method", $data['payment_method']);
-            $stmt->bindParam(":proof_image", $data['proof_image']);
-            $stmt->bindParam(":transaction_hash", $transaction_hash);
-            $stmt->bindParam(":currency", $currency);
-
-            if ($stmt->execute()) {
-                $deposit_id = $this->db->lastInsertId();
-
-                $this->createNotification(
-                    $user_id,
-                    "💰 Deposit Request Submitted",
-                    "Your deposit request of ₦" . number_format($amount, 2) . " is under review. You will be notified once approved.",
-                    'info'
-                );
-
-                Response::success(['deposit_id' => $deposit_id], 'Deposit request submitted successfully');
-            } else {
-                Response::error('Deposit request failed');
-            }
-        } catch (Exception $e) {
-            error_log("Create deposit error: " . $e->getMessage());
-            Response::error('Deposit request failed: ' . $e->getMessage());
-        }
-    }
-
-    public function getUserDeposits($user_id, $page = 1, $per_page = 10) {
-        try {
-            $offset = ($page - 1) * $per_page;
-            
-            $query = "SELECT * FROM deposit_requests 
-                     WHERE user_id = :user_id 
-                     ORDER BY created_at DESC 
-                     LIMIT :limit OFFSET :offset";
-            
-            $stmt = $this->db->prepare($query);
-            $stmt->bindParam(":user_id", $user_id);
-            $stmt->bindParam(":limit", $per_page, PDO::PARAM_INT);
-            $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
-            $stmt->execute();
-            $deposits = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $count_stmt = $this->db->prepare("SELECT COUNT(*) as total FROM deposit_requests WHERE user_id = ?");
-            $count_stmt->bindParam(1, $user_id);
-            $count_stmt->execute();
-            $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
-
-            Response::paginated($deposits, $total, $page, $per_page, 'Deposits fetched successfully');
-        } catch (Exception $e) {
-            error_log("Get deposits error: " . $e->getMessage());
-            Response::error('Failed to fetch deposits');
-        }
-    }
-
-    public function getPaymentMethods() {
-        $methods = [
-            [
-                'id' => 'bank_transfer',
-                'name' => 'Bank Transfer',
-                'description' => 'Direct bank transfer to Nigerian banks',
-                'processing_time' => '1-3 business days',
-                'min_amount' => MIN_DEPOSIT,
-                'max_amount' => 500000,
-                'fees' => '0%'
-            ],
-            [
-                'id' => 'crypto',
-                'name' => 'Cryptocurrency',
-                'description' => 'Bitcoin, Ethereum, USDT, BNB',
-                'processing_time' => 'Instant',
-                'min_amount' => MIN_DEPOSIT,
-                'max_amount' => 1000000,
-                'fees' => '0%'
-            ],
-            [
-                'id' => 'paypal',
-                'name' => 'PayPal',
-                'description' => 'PayPal payment',
-                'processing_time' => 'Instant',
-                'min_amount' => MIN_DEPOSIT,
-                'max_amount' => 200000,
-                'fees' => '2.9%'
-            ],
-            [
-                'id' => 'card',
-                'name' => 'Credit/Debit Card',
-                'description' => 'Visa, Mastercard, Verve',
-                'processing_time' => 'Instant',
-                'min_amount' => MIN_DEPOSIT,
-                'max_amount' => 100000,
-                'fees' => '3.5%'
-            ]
-        ];
-
-        Response::success(['payment_methods' => $methods], 'Payment methods fetched successfully');
-    }
-
-    private function createNotification($user_id, $title, $message, $type = 'info') {
-        $query = "INSERT INTO notifications 
-                 SET user_id=:user_id, title=:title, message=:message, type=:type, priority=:priority";
-        
-        $priority = 'medium';
-        $stmt = $this->db->prepare($query);
-        $stmt->bindParam(":user_id", $user_id);
-        $stmt->bindParam(":title", $title);
-        $stmt->bindParam(":message", $message);
-        $stmt->bindParam(":type", $type);
-        $stmt->bindParam(":priority", $priority);
-        
-        $stmt->execute();
-    }
-}
-
-// Advanced Withdrawal Controller with Enhanced Security
-class WithdrawalController {
-    private $db;
-
-    public function __construct($db) {
-        $this->db = $db;
-    }
-
-    public function createWithdrawal($user_id, $data) {
-        try {
-            $errors = [];
-            if (empty($data['amount'])) $errors['amount'] = 'Amount is required';
-            if (empty($data['payment_method'])) $errors['payment_method'] = 'Payment method is required';
-
-            if (!empty($errors)) {
-                Response::validationError($errors);
-            }
-
-            $amount = floatval($data['amount']);
-            $platform_fee = $amount * WITHDRAWAL_FEE_RATE;
-            $net_amount = $amount - $platform_fee;
-
-            if ($amount < MIN_WITHDRAWAL) {
-                Response::error('Minimum withdrawal amount is ₦' . number_format(MIN_WITHDRAWAL, 2));
-            }
-
-            if ($amount > MAX_WITHDRAWAL) {
-                Response::error('Maximum withdrawal amount is ₦' . number_format(MAX_WITHDRAWAL, 2));
-            }
-
-            // Check user balance
-            $user_stmt = $this->db->prepare("SELECT balance, kyc_verified FROM users WHERE id = ?");
-            $user_stmt->bindParam(1, $user_id);
-            $user_stmt->execute();
-            $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($user['balance'] < $amount) {
-                Response::error('Insufficient balance for withdrawal');
-            }
-
-            if (!$user['kyc_verified']) {
-                Response::error('KYC verification required for withdrawals');
-            }
-
-            // Validate payment details based on method
-            $validation_errors = $this->validatePaymentDetails($data);
-            if (!empty($validation_errors)) {
-                Response::validationError($validation_errors);
-            }
-
-            $this->db->beginTransaction();
-
-            $query = "INSERT INTO withdrawal_requests 
-                     SET user_id=:user_id, amount=:amount, platform_fee=:platform_fee,
-                     net_amount=:net_amount, bank_name=:bank_name, account_name=:account_name,
-                     account_number=:account_number, wallet_address=:wallet_address,
-                     payment_method=:payment_method, swift_code=:swift_code, iban=:iban";
-
-            $stmt = $this->db->prepare($query);
-            $stmt->bindParam(":user_id", $user_id);
-            $stmt->bindParam(":amount", $amount);
-            $stmt->bindParam(":platform_fee", $platform_fee);
-            $stmt->bindParam(":net_amount", $net_amount);
-            $stmt->bindParam(":bank_name", $data['bank_name']);
-            $stmt->bindParam(":account_name", $data['account_name']);
-            $stmt->bindParam(":account_number", $data['account_number']);
-            $stmt->bindParam(":wallet_address", $data['wallet_address']);
-            $stmt->bindParam(":payment_method", $data['payment_method']);
-            $stmt->bindParam(":swift_code", $data['swift_code']);
-            $stmt->bindParam(":iban", $data['iban']);
-
-            if ($stmt->execute()) {
-                $withdrawal_id = $this->db->lastInsertId();
-
-                // Deduct from user balance immediately
-                $update_balance = $this->db->prepare("UPDATE users SET balance = balance - ? WHERE id = ?");
-                $update_balance->bindParam(1, $amount);
-                $update_balance->bindParam(2, $user_id);
-                $update_balance->execute();
-
-                $this->createNotification(
-                    $user_id,
-                    "💸 Withdrawal Request Submitted",
-                    "Your withdrawal request of ₦" . number_format($amount, 2) . " is under review. Net amount: ₦" . number_format($net_amount, 2),
-                    'info'
-                );
-
-                $this->db->commit();
-
-                Response::success(['withdrawal_id' => $withdrawal_id], 'Withdrawal request submitted successfully');
-            } else {
-                $this->db->rollBack();
-                Response::error('Withdrawal request failed');
-            }
-        } catch (Exception $e) {
-            $this->db->rollBack();
-            error_log("Create withdrawal error: " . $e->getMessage());
-            Response::error('Withdrawal request failed: ' . $e->getMessage());
-        }
-    }
-
-    public function getUserWithdrawals($user_id, $page = 1, $per_page = 10) {
-        try {
-            $offset = ($page - 1) * $per_page;
-            
-            $query = "SELECT * FROM withdrawal_requests 
-                     WHERE user_id = :user_id 
-                     ORDER BY created_at DESC 
-                     LIMIT :limit OFFSET :offset";
-            
-            $stmt = $this->db->prepare($query);
-            $stmt->bindParam(":user_id", $user_id);
-            $stmt->bindParam(":limit", $per_page, PDO::PARAM_INT);
-            $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
-            $stmt->execute();
-            $withdrawals = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $count_stmt = $this->db->prepare("SELECT COUNT(*) as total FROM withdrawal_requests WHERE user_id = ?");
-            $count_stmt->bindParam(1, $user_id);
-            $count_stmt->execute();
-            $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
-
-            Response::paginated($withdrawals, $total, $page, $per_page, 'Withdrawals fetched successfully');
-        } catch (Exception $e) {
-            error_log("Get withdrawals error: " . $e->getMessage());
-            Response::error('Failed to fetch withdrawals');
-        }
-    }
-
-    private function validatePaymentDetails($data) {
-        $errors = [];
-        $method = $data['payment_method'];
-
-        switch ($method) {
-            case 'bank_transfer':
-                if (empty($data['bank_name'])) $errors['bank_name'] = 'Bank name is required';
-                if (empty($data['account_name'])) $errors['account_name'] = 'Account name is required';
-                if (empty($data['account_number'])) $errors['account_number'] = 'Account number is required';
-                break;
-            case 'crypto':
-                if (empty($data['wallet_address'])) $errors['wallet_address'] = 'Wallet address is required';
-                break;
-            case 'paypal':
-                if (empty($data['account_name'])) $errors['account_name'] = 'PayPal email is required';
-                break;
-        }
-
-        return $errors;
-    }
-
-    private function createNotification($user_id, $title, $message, $type = 'info') {
-        $query = "INSERT INTO notifications 
-                 SET user_id=:user_id, title=:title, message=:message, type=:type, priority=:priority";
-        
-        $priority = 'medium';
-        $stmt = $this->db->prepare($query);
-        $stmt->bindParam(":user_id", $user_id);
-        $stmt->bindParam(":title", $title);
-        $stmt->bindParam(":message", $message);
-        $stmt->bindParam(":type", $type);
-        $stmt->bindParam(":priority", $priority);
-        
-        $stmt->execute();
-    }
-}
-
-// Advanced Admin Controller with Comprehensive Management
-class AdminController {
-    private $db;
-
-    public function __construct($db) {
-        $this->db = $db;
-    }
-
-    public function getDashboardStats() {
-        try {
-            $stats = [];
-
-            // Total users
-            $stmt = $this->db->prepare("SELECT COUNT(*) as total_users FROM users WHERE role = 'user'");
-            $stmt->execute();
-            $stats['total_users'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_users'];
-
-            // New users this month
-            $stmt = $this->db->prepare("SELECT COUNT(*) as new_users_month FROM users WHERE role = 'user' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())");
-            $stmt->execute();
-            $stats['new_users_month'] = $stmt->fetch(PDO::FETCH_ASSOC)['new_users_month'];
-
-            // Total investments
-            $stmt = $this->db->prepare("SELECT COUNT(*) as total_investments, COALESCE(SUM(amount), 0) as total_invested FROM investments");
-            $stmt->execute();
-            $investment_stats = $stmt->fetch(PDO::FETCH_ASSOC);
-            $stats['total_investments'] = $investment_stats['total_investments'];
-            $stats['total_invested'] = $investment_stats['total_invested'];
-
-            // Active investments
-            $stmt = $this->db->prepare("SELECT COUNT(*) as active_investments, COALESCE(SUM(amount), 0) as active_invested FROM investments WHERE status = 'active'");
-            $stmt->execute();
-            $active_stats = $stmt->fetch(PDO::FETCH_ASSOC);
-            $stats['active_investments'] = $active_stats['active_investments'];
-            $stats['active_invested'] = $active_stats['active_invested'];
-
-            // Total deposits
-            $stmt = $this->db->prepare("SELECT COUNT(*) as total_deposits, COALESCE(SUM(amount), 0) as total_deposited FROM deposit_requests WHERE status = 'approved'");
-            $stmt->execute();
-            $deposit_stats = $stmt->fetch(PDO::FETCH_ASSOC);
-            $stats['total_deposits'] = $deposit_stats['total_deposits'];
-            $stats['total_deposited'] = $deposit_stats['total_deposited'];
-
-            // Total withdrawals
-            $stmt = $this->db->prepare("SELECT COUNT(*) as total_withdrawals, COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawal_requests WHERE status = 'approved'");
-            $stmt->execute();
-            $withdrawal_stats = $stmt->fetch(PDO::FETCH_ASSOC);
-            $stats['total_withdrawals'] = $withdrawal_stats['total_withdrawals'];
-            $stats['total_withdrawn'] = $withdrawal_stats['total_withdrawn'];
-
-            // Total earnings (platform)
-            $stmt = $this->db->prepare("SELECT COALESCE(SUM(platform_fee), 0) as total_earnings FROM withdrawal_requests WHERE status = 'approved'");
-            $stmt->execute();
-            $stats['total_earnings'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_earnings'];
-
-            // Pending approvals
-            $stmt = $this->db->prepare("SELECT 
-                (SELECT COUNT(*) FROM deposit_requests WHERE status = 'pending') as pending_deposits,
-                (SELECT COUNT(*) FROM withdrawal_requests WHERE status = 'pending') as pending_withdrawals,
-                (SELECT COUNT(*) FROM investments WHERE status = 'pending') as pending_investments");
-            $stmt->execute();
-            $pending_stats = $stmt->fetch(PDO::FETCH_ASSOC);
-            $stats['pending_approvals'] = $pending_stats['pending_deposits'] + $pending_stats['pending_withdrawals'] + $pending_stats['pending_investments'];
-            $stats['pending_deposits'] = $pending_stats['pending_deposits'];
-            $stats['pending_withdrawals'] = $pending_stats['pending_withdrawals'];
-            $stats['pending_investments'] = $pending_stats['pending_investments'];
-
-            // Recent activity
-            $stmt = $this->db->prepare("SELECT action, COUNT(*) as count FROM audit_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) GROUP BY action");
-            $stmt->execute();
-            $stats['recent_activity'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            Response::success(['stats' => $stats], 'Dashboard statistics fetched successfully');
-        } catch (Exception $e) {
-            error_log("Get admin stats error: " . $e->getMessage());
-            Response::error('Failed to fetch admin statistics');
-        }
-    }
-
-    public function approveDeposit($admin_id, $deposit_id) {
-        try {
-            $this->db->beginTransaction();
-
-            // Get deposit details
-            $stmt = $this->db->prepare("SELECT * FROM deposit_requests WHERE id = ?");
-            $stmt->bindParam(1, $deposit_id);
-            $stmt->execute();
-            $deposit = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$deposit) {
-                Response::error('Deposit request not found');
-            }
-
-            if ($deposit['status'] !== 'pending') {
-                Response::error('Deposit request already processed');
-            }
-
-            // Update deposit status
-            $update_stmt = $this->db->prepare("UPDATE deposit_requests SET status = 'approved', processed_by = ?, processed_at = NOW() WHERE id = ?");
-            $update_stmt->bindParam(1, $admin_id);
-            $update_stmt->bindParam(2, $deposit_id);
-            $update_stmt->execute();
-
-            // Update user balance
-            $user_stmt = $this->db->prepare("UPDATE users SET balance = balance + ? WHERE id = ?");
-            $user_stmt->bindParam(1, $deposit['amount']);
-            $user_stmt->bindParam(2, $deposit['user_id']);
-            $user_stmt->execute();
-
-            // Create transaction record
-            $txn_stmt = $this->db->prepare("INSERT INTO transactions SET user_id = ?, type = 'deposit', amount = ?, status = 'completed', description = 'Deposit approved'");
-            $txn_stmt->bindParam(1, $deposit['user_id']);
-            $txn_stmt->bindParam(2, $deposit['amount']);
-            $txn_stmt->execute();
-
-            // Create notification
-            $notif_stmt = $this->db->prepare("INSERT INTO notifications SET user_id = ?, title = '💰 Deposit Approved', message = ?, type = 'success', priority = 'high'");
-            $message = "Your deposit of ₦" . number_format($deposit['amount'], 2) . " has been approved and added to your balance.";
-            $notif_stmt->bindParam(1, $deposit['user_id']);
-            $notif_stmt->bindParam(2, $message);
-            $notif_stmt->execute();
-
-            $this->db->commit();
-
-            Response::success(null, 'Deposit approved successfully');
-        } catch (Exception $e) {
-            $this->db->rollBack();
-            error_log("Approve deposit error: " . $e->getMessage());
-            Response::error('Failed to approve deposit');
-        }
-    }
-
-    public function approveWithdrawal($admin_id, $withdrawal_id) {
-        try {
-            $this->db->beginTransaction();
-
-            // Get withdrawal details
-            $stmt = $this->db->prepare("SELECT * FROM withdrawal_requests WHERE id = ?");
-            $stmt->bindParam(1, $withdrawal_id);
-            $stmt->execute();
-            $withdrawal = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$withdrawal) {
-                Response::error('Withdrawal request not found');
-            }
-
-            if ($withdrawal['status'] !== 'pending') {
-                Response::error('Withdrawal request already processed');
-            }
-
-            // Update withdrawal status
-            $update_stmt = $this->db->prepare("UPDATE withdrawal_requests SET status = 'approved', processed_by = ?, processed_at = NOW() WHERE id = ?");
-            $update_stmt->bindParam(1, $admin_id);
-            $update_stmt->bindParam(2, $withdrawal_id);
-            $update_stmt->execute();
-
-            // Create transaction record
-            $txn_stmt = $this->db->prepare("INSERT INTO transactions SET user_id = ?, type = 'withdrawal', amount = ?, status = 'completed', description = 'Withdrawal approved'");
-            $txn_stmt->bindParam(1, $withdrawal['user_id']);
-            $txn_stmt->bindParam(2, $withdrawal['amount']);
-            $txn_stmt->execute();
-
-            // Create notification
-            $notif_stmt = $this->db->prepare("INSERT INTO notifications SET user_id = ?, title = '💸 Withdrawal Approved', message = ?, type = 'success', priority = 'high'");
-            $message = "Your withdrawal of ₦" . number_format($withdrawal['amount'], 2) . " has been approved and will be processed shortly.";
-            $notif_stmt->bindParam(1, $withdrawal['user_id']);
-            $notif_stmt->bindParam(2, $message);
-            $notif_stmt->execute();
-
-            $this->db->commit();
-
-            Response::success(null, 'Withdrawal approved successfully');
-        } catch (Exception $e) {
-            $this->db->rollBack();
-            error_log("Approve withdrawal error: " . $e->getMessage());
-            Response::error('Failed to approve withdrawal');
-        }
-    }
-
-    public function approveInvestment($admin_id, $investment_id) {
-        try {
-            $investment = new Investment($this->db);
-            
-            if ($investment->updateStatus($investment_id, 'active', $admin_id)) {
-                Response::success(null, 'Investment approved successfully');
-            } else {
-                Response::error('Failed to approve investment');
-            }
-        } catch (Exception $e) {
-            error_log("Approve investment error: " . $e->getMessage());
-            Response::error('Failed to approve investment');
-        }
-    }
-
-    public function getUsers($page = 1, $per_page = 20, $search = '') {
-        try {
-            $offset = ($page - 1) * $per_page;
-            
-            $query = "SELECT id, full_name, email, phone, balance, total_invested, total_earnings, 
-                             referral_earnings, referral_code, status, kyc_verified, created_at 
-                     FROM users 
-                     WHERE role = 'user'";
-            
-            if (!empty($search)) {
-                $query .= " AND (full_name LIKE :search OR email LIKE :search OR phone LIKE :search)";
-            }
-            
-            $query .= " ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
-            
-            $stmt = $this->db->prepare($query);
-            
-            if (!empty($search)) {
-                $search_term = "%$search%";
-                $stmt->bindParam(":search", $search_term);
-            }
-            
-            $stmt->bindParam(":limit", $per_page, PDO::PARAM_INT);
-            $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
-            $stmt->execute();
-            $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            // Get total count
-            $count_query = "SELECT COUNT(*) as total FROM users WHERE role = 'user'";
-            if (!empty($search)) {
-                $count_query .= " AND (full_name LIKE :search OR email LIKE :search OR phone LIKE :search)";
-            }
-            
-            $count_stmt = $this->db->prepare($count_query);
-            if (!empty($search)) {
-                $count_stmt->bindParam(":search", $search_term);
-            }
-            $count_stmt->execute();
-            $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
-
-            Response::paginated($users, $total, $page, $per_page, 'Users fetched successfully');
-        } catch (Exception $e) {
-            error_log("Get users error: " . $e->getMessage());
-            Response::error('Failed to fetch users');
-        }
-    }
-
-    public function updateUserStatus($user_id, $status) {
-        try {
-            $allowed_statuses = ['active', 'suspended', 'pending'];
-            if (!in_array($status, $allowed_statuses)) {
-                Response::error('Invalid status');
-            }
-
-            $stmt = $this->db->prepare("UPDATE users SET status = ? WHERE id = ?");
-            $stmt->bindParam(1, $status);
-            $stmt->bindParam(2, $user_id);
-
-            if ($stmt->execute()) {
-                Response::success(null, 'User status updated successfully');
-            } else {
-                Response::error('Failed to update user status');
-            }
-        } catch (Exception $e) {
-            error_log("Update user status error: " . $e->getMessage());
-            Response::error('Failed to update user status');
+            error_log("Get pending investments error: " . $e->getMessage());
+            Response::error('Failed to fetch pending investments');
         }
     }
 }
@@ -2621,6 +3350,9 @@ class Application {
     private $investmentController;
     private $depositController;
     private $withdrawalController;
+    private $kycController;
+    private $notificationController;
+    private $referralController;
     private $adminController;
 
     public function __construct() {
@@ -2631,6 +3363,9 @@ class Application {
         $this->investmentController = new InvestmentController($this->db);
         $this->depositController = new DepositController($this->db);
         $this->withdrawalController = new WithdrawalController($this->db);
+        $this->kycController = new KYCController($this->db);
+        $this->notificationController = new NotificationController($this->db);
+        $this->referralController = new ReferralController($this->db);
         $this->adminController = new AdminController($this->db);
     }
 
@@ -2639,7 +3374,6 @@ class Application {
         $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         $path = str_replace('/index.php', '', $path);
         
-        // Handle preflight requests
         if ($method === 'OPTIONS') {
             Response::success([]);
         }
@@ -2648,14 +3382,14 @@ class Application {
             switch ($path) {
                 case '/api/register':
                     if ($method === 'POST') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->authController->register($data);
                     }
                     break;
 
                 case '/api/login':
                     if ($method === 'POST') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->authController->login($data);
                     }
                     break;
@@ -2665,7 +3399,7 @@ class Application {
                     if ($method === 'GET') {
                         $this->authController->getProfile($user['user_id']);
                     } elseif ($method === 'PUT') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->authController->updateProfile($user['user_id'], $data);
                     }
                     break;
@@ -2673,7 +3407,7 @@ class Application {
                 case '/api/profile/password':
                     $user = $this->authenticate();
                     if ($method === 'PUT') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->authController->changePassword($user['user_id'], $data);
                     }
                     break;
@@ -2688,7 +3422,7 @@ class Application {
                 case '/api/2fa/disable':
                     $user = $this->authenticate();
                     if ($method === 'POST') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->authController->disable2FA($user['user_id'], $data['code']);
                     }
                     break;
@@ -2699,7 +3433,7 @@ class Application {
                         $page = $_GET['page'] ?? 1;
                         $this->investmentController->getUserInvestments($user['user_id'], $page);
                     } elseif ($method === 'POST') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->investmentController->createInvestment($user['user_id'], $data);
                     }
                     break;
@@ -2737,7 +3471,7 @@ class Application {
                         $page = $_GET['page'] ?? 1;
                         $this->depositController->getUserDeposits($user['user_id'], $page);
                     } elseif ($method === 'POST') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->depositController->createDeposit($user['user_id'], $data);
                     }
                     break;
@@ -2755,8 +3489,69 @@ class Application {
                         $page = $_GET['page'] ?? 1;
                         $this->withdrawalController->getUserWithdrawals($user['user_id'], $page);
                     } elseif ($method === 'POST') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->withdrawalController->createWithdrawal($user['user_id'], $data);
+                    }
+                    break;
+
+                case '/api/kyc/submit':
+                    $user = $this->authenticate();
+                    if ($method === 'POST') {
+                        $data = $this->getInputData();
+                        $this->kycController->submitKYC($user['user_id'], $data);
+                    }
+                    break;
+
+                case '/api/kyc/status':
+                    $user = $this->authenticate();
+                    if ($method === 'GET') {
+                        $this->kycController->getKYCStatus($user['user_id']);
+                    }
+                    break;
+
+                case '/api/notifications':
+                    $user = $this->authenticate();
+                    if ($method === 'GET') {
+                        $page = $_GET['page'] ?? 1;
+                        $this->notificationController->getUserNotifications($user['user_id'], $page);
+                    }
+                    break;
+
+                case '/api/notifications/read':
+                    $user = $this->authenticate();
+                    if ($method === 'POST') {
+                        $data = $this->getInputData();
+                        $this->notificationController->markAsRead($user['user_id'], $data['notification_id']);
+                    }
+                    break;
+
+                case '/api/notifications/read-all':
+                    $user = $this->authenticate();
+                    if ($method === 'POST') {
+                        $this->notificationController->markAllAsRead($user['user_id']);
+                    }
+                    break;
+
+                case '/api/notifications/delete':
+                    $user = $this->authenticate();
+                    if ($method === 'DELETE') {
+                        $data = $this->getInputData();
+                        $this->notificationController->deleteNotification($user['user_id'], $data['notification_id']);
+                    }
+                    break;
+
+                case '/api/referrals/stats':
+                    $user = $this->authenticate();
+                    if ($method === 'GET') {
+                        $this->referralController->getReferralStats($user['user_id']);
+                    }
+                    break;
+
+                case '/api/referrals/earnings':
+                    $user = $this->authenticate();
+                    if ($method === 'GET') {
+                        $page = $_GET['page'] ?? 1;
+                        $this->referralController->getReferralEarnings($user['user_id'], $page);
                     }
                     break;
 
@@ -2767,10 +3562,17 @@ class Application {
                     }
                     break;
 
+                case '/api/admin/financial-overview':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'GET') {
+                        $this->adminController->getFinancialOverview();
+                    }
+                    break;
+
                 case '/api/admin/approve-deposit':
                     $user = $this->authenticateAdmin();
                     if ($method === 'POST') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->adminController->approveDeposit($user['user_id'], $data['deposit_id']);
                     }
                     break;
@@ -2778,7 +3580,7 @@ class Application {
                 case '/api/admin/approve-withdrawal':
                     $user = $this->authenticateAdmin();
                     if ($method === 'POST') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->adminController->approveWithdrawal($user['user_id'], $data['withdrawal_id']);
                     }
                     break;
@@ -2786,8 +3588,24 @@ class Application {
                 case '/api/admin/approve-investment':
                     $user = $this->authenticateAdmin();
                     if ($method === 'POST') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->adminController->approveInvestment($user['user_id'], $data['investment_id']);
+                    }
+                    break;
+
+                case '/api/admin/approve-kyc':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'POST') {
+                        $data = $this->getInputData();
+                        $this->kycController->approveKYC($user['user_id'], $data['kyc_id']);
+                    }
+                    break;
+
+                case '/api/admin/reject-kyc':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'POST') {
+                        $data = $this->getInputData();
+                        $this->kycController->rejectKYC($user['user_id'], $data['kyc_id'], $data['reason']);
                     }
                     break;
 
@@ -2803,8 +3621,45 @@ class Application {
                 case '/api/admin/users/status':
                     $user = $this->authenticateAdmin();
                     if ($method === 'PUT') {
-                        $data = json_decode(file_get_contents('php://input'), true);
+                        $data = $this->getInputData();
                         $this->adminController->updateUserStatus($data['user_id'], $data['status']);
+                    }
+                    break;
+
+                case '/api/admin/pending-deposits':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'GET') {
+                        $this->depositController->getPendingDeposits();
+                    }
+                    break;
+
+                case '/api/admin/pending-withdrawals':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'GET') {
+                        $this->withdrawalController->getPendingWithdrawals();
+                    }
+                    break;
+
+                case '/api/admin/pending-investments':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'GET') {
+                        $this->investmentController->getPendingInvestments();
+                    }
+                    break;
+
+                case '/api/admin/pending-kyc':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'GET') {
+                        $this->kycController->getPendingKYC();
+                    }
+                    break;
+
+                case '/api/admin/system-logs':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'GET') {
+                        $page = $_GET['page'] ?? 1;
+                        $type = $_GET['type'] ?? 'all';
+                        $this->adminController->getSystemLogs($page, 50, $type);
                     }
                     break;
 
@@ -2839,6 +3694,18 @@ class Application {
         } catch (Exception $e) {
             error_log("Application error: " . $e->getMessage());
             Response::error('Internal server error', 500);
+        }
+    }
+
+    private function getInputData() {
+        $content_type = $_SERVER['CONTENT_TYPE'] ?? '';
+        
+        if (strpos($content_type, 'application/json') !== false) {
+            return json_decode(file_get_contents('php://input'), true);
+        } elseif (strpos($content_type, 'multipart/form-data') !== false) {
+            return array_merge($_POST, $_FILES);
+        } else {
+            return $_POST;
         }
     }
 
@@ -2880,7 +3747,6 @@ class Application {
 // Advanced Database Initialization and Setup
 function initializeDatabase($db) {
     try {
-        // Create tables if they don't exist
         $tables_sql = [
             "CREATE TABLE IF NOT EXISTS users (
                 id INT PRIMARY KEY AUTO_INCREMENT,
@@ -2982,7 +3848,7 @@ function initializeDatabase($db) {
                 payment_method ENUM('bank_transfer', 'crypto', 'paypal', 'card', 'skrill', 'neteller') DEFAULT 'bank_transfer',
                 proof_image VARCHAR(255),
                 transaction_hash VARCHAR(255),
-                currency VARCHAR(10) DEFAULT 'NGN',
+                currency VARCHAR(10) DEFAULT 'USD',
                 status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
                 admin_notes TEXT,
                 processed_by INT NULL,
@@ -3068,6 +3934,42 @@ function initializeDatabase($db) {
                 INDEX idx_user_id (user_id),
                 INDEX idx_action (action),
                 INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            "CREATE TABLE IF NOT EXISTS kyc_documents (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                user_id INT NOT NULL,
+                document_type ENUM('national_id', 'passport', 'driver_license') NOT NULL,
+                document_number VARCHAR(100) NOT NULL,
+                front_image VARCHAR(255) NOT NULL,
+                back_image VARCHAR(255),
+                selfie_image VARCHAR(255),
+                status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+                verified_by INT NULL,
+                verified_at TIMESTAMP NULL,
+                rejection_reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                INDEX idx_user_id (user_id),
+                INDEX idx_status (status),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            "CREATE TABLE IF NOT EXISTS referral_earnings (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                referrer_id INT NOT NULL,
+                referred_user_id INT NOT NULL,
+                amount DECIMAL(15,2) NOT NULL,
+                type ENUM('signup_bonus', 'investment_commission') DEFAULT 'signup_bonus',
+                status ENUM('pending', 'paid') DEFAULT 'pending',
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (referrer_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (referred_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                INDEX idx_referrer_id (referrer_id),
+                INDEX idx_referred_user_id (referred_user_id),
+                INDEX idx_status (status)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         ];
 
@@ -3075,47 +3977,46 @@ function initializeDatabase($db) {
             $db->exec($sql);
         }
 
-        // Insert default admin user if not exists
         $check_admin = $db->prepare("SELECT id FROM users WHERE email = 'admin@rawwealthy.com'");
         $check_admin->execute();
         
         if ($check_admin->rowCount() == 0) {
             $admin_password = Security::hashPassword('Admin123!');
-            $insert_admin = $db->prepare("INSERT INTO users (full_name, email, password_hash, role, referral_code, kyc_verified, balance, risk_tolerance) VALUES ('Admin User', 'admin@rawwealthy.com', ?, 'admin', 'ADMIN001', TRUE, 1000000.00, 'medium')");
+            $insert_admin = $db->prepare("INSERT INTO users (full_name, email, password_hash, role, referral_code, kyc_verified, balance, risk_tolerance) VALUES ('Admin User', 'admin@rawwealthy.com', ?, 'admin', 'ADMIN001', TRUE, 100000.00, 'medium')");
             $insert_admin->execute([$admin_password]);
         }
 
-        // Insert 25 investment plans in Naira
         $check_plans = $db->prepare("SELECT id FROM investment_plans");
         $check_plans->execute();
         
         if ($check_plans->rowCount() == 0) {
+            // 25 Investment Plans with $3,500 - $300,000 range
             $plans_sql = "INSERT INTO investment_plans (name, min_amount, max_amount, daily_interest, total_interest, duration, description, risk_level, features) VALUES 
-                ('Starter Plan', 3500, 10000, 2.5, 75, 30, 'Perfect for beginners with low risk tolerance. Start your investment journey with confidence.', 'low', '[\"Low Risk\", \"Beginner Friendly\", \"Daily Payouts\", \"24/7 Support\"]'),
-                ('Silver Growth', 5000, 25000, 3.0, 90, 30, 'Balanced growth with moderate risk. Ideal for steady portfolio expansion.', 'medium', '[\"Balanced Growth\", \"Moderate Risk\", \"Stable Returns\", \"Portfolio Diversification\"]'),
-                ('Gold Premium', 10000, 50000, 3.5, 105, 30, 'Premium investment with higher returns. For experienced investors seeking growth.', 'medium', '[\"Premium Returns\", \"Experienced Level\", \"Growth Focus\", \"Priority Support\"]'),
-                ('Platinum Elite', 25000, 100000, 4.0, 120, 30, 'Elite investment plan with exceptional returns and premium features.', 'high', '[\"Elite Returns\", \"Premium Features\", \"VIP Support\", \"Exclusive Opportunities\"]'),
-                ('Diamond Wealth', 50000, 200000, 4.5, 135, 30, 'Maximum returns for serious investors. High risk, high reward strategy.', 'high', '[\"Maximum Returns\", \"High Reward\", \"Wealth Building\", \"Exclusive Access\"]'),
-                ('Naira Accelerator', 75000, 300000, 5.0, 150, 30, 'Accelerated growth plan for substantial capital appreciation.', 'high', '[\"Accelerated Growth\", \"Capital Appreciation\", \"Advanced Strategy\", \"Market Leadership\"]'),
-                ('Wealth Builder', 100000, 400000, 5.5, 165, 30, 'Build substantial wealth through strategic investments and compounding.', 'high', '[\"Wealth Building\", \"Strategic Investment\", \"Compounding\", \"Long-term Growth\"]'),
-                ('Fortune Maker', 150000, 500000, 6.0, 180, 30, 'Create fortunes through high-yield investments and market opportunities.', 'high', '[\"Fortune Creation\", \"High Yield\", \"Market Opportunities\", \"Exclusive Deals\"]'),
-                ('Business Pro', 200000, 500000, 6.5, 195, 30, 'Professional investment plan for business-minded individuals.', 'high', '[\"Professional Grade\", \"Business Focus\", \"Strategic Planning\", \"Corporate Level\"]'),
-                ('Enterprise Gold', 250000, 500000, 7.0, 210, 30, 'Enterprise-level investment with institutional-grade returns.', 'high', '[\"Enterprise Level\", \"Institutional Grade\", \"Maximum Security\", \"Dedicated Manager\"]'),
-                ('Quick Return', 3500, 15000, 2.8, 84, 30, 'Quick returns with minimal risk. Perfect for short-term investors.', 'low', '[\"Quick Returns\", \"Short-term\", \"Minimal Risk\", \"Flexible Terms\"]'),
-                ('Steady Income', 7000, 35000, 3.2, 96, 30, 'Consistent income generation with reliable daily payouts.', 'medium', '[\"Steady Income\", \"Reliable Payouts\", \"Consistent Returns\", \"Income Focus\"]'),
-                ('Growth Plus', 15000, 75000, 3.8, 114, 30, 'Enhanced growth potential with balanced risk management.', 'medium', '[\"Enhanced Growth\", \"Balanced Risk\", \"Growth Focus\", \"Risk Management\"]'),
-                ('Premium Plus', 30000, 150000, 4.2, 126, 30, 'Premium features with enhanced returns and additional benefits.', 'high', '[\"Premium Features\", \"Enhanced Returns\", \"Additional Benefits\", \"VIP Treatment\"]'),
-                ('Ultimate Wealth', 60000, 300000, 4.8, 144, 30, 'Ultimate wealth creation strategy with maximum potential.', 'high', '[\"Ultimate Wealth\", \"Maximum Potential\", \"Wealth Creation\", \"Exclusive Strategy\"]'),
-                ('Naira Master', 120000, 500000, 5.2, 156, 30, 'Master-level investment strategy for serious wealth accumulation.', 'high', '[\"Master Level\", \"Wealth Accumulation\", \"Advanced Techniques\", \"Expert Guidance\"]'),
-                ('Capital King', 180000, 500000, 5.8, 174, 30, 'King-sized returns with royal treatment and premium support.', 'high', '[\"King-sized Returns\", \"Royal Treatment\", \"Premium Support\", \"Exclusive Access\"]'),
-                ('Wealth Titan', 220000, 500000, 6.2, 186, 30, 'Titan-level investment power for massive wealth creation.', 'high', '[\"Titan Level\", \"Massive Wealth\", \"Power Investing\", \"Maximum Impact\"]'),
-                ('Future Fortune', 280000, 500000, 6.8, 204, 30, 'Build your future fortune with strategic long-term planning.', 'high', '[\"Future Fortune\", \"Long-term Planning\", \"Strategic Vision\", \"Legacy Building\"]'),
-                ('Legacy Builder', 350000, 500000, 7.2, 216, 30, 'Create a lasting legacy through intelligent wealth building.', 'high', '[\"Legacy Building\", \"Intelligent Wealth\", \"Lasting Impact\", \"Generational Wealth\"]'),
-                ('Naira Champion', 400000, 500000, 7.5, 225, 30, 'Champion-level returns with unbeatable investment performance.', 'high', '[\"Champion Level\", \"Unbeatable Performance\", \"Top Returns\", \"Elite Status\"]'),
-                ('Wealth Warrior', 450000, 500000, 7.8, 234, 30, 'Fight for your financial freedom with warrior-level determination.', 'high', '[\"Wealth Warrior\", \"Financial Freedom\", \"Determination\", \"Victory Mindset\"]'),
-                ('Millionaire Blueprint', 480000, 500000, 8.0, 240, 30, 'The blueprint to millionaire status through smart investments.', 'high', '[\"Millionaire Blueprint\", \"Smart Investments\", \"Wealth Formula\", \"Success Path\"]'),
-                ('Empire Builder', 490000, 500000, 8.2, 246, 30, 'Build your financial empire with empire-level investment strategy.', 'high', '[\"Empire Builder\", \"Financial Empire\", \"Strategic Mastery\", \"Dominant Returns\"]'),
-                ('Raw Wealth Ultimate', 500000, 500000, 8.5, 255, 30, 'The ultimate investment plan for maximum wealth creation and financial freedom.', 'high', '[\"Ultimate Plan\", \"Maximum Wealth\", \"Financial Freedom\", \"Peak Performance\"]')";
+                ('Bronze Starter', 3500, 10000, 2.5, 75, 30, 'Perfect for beginners with low risk tolerance. Stable returns with capital protection.', 'low', '[\"Capital Protection\", \"Stable Returns\", \"Beginner Friendly\", \"Low Risk\"]'),
+                ('Silver Growth', 5000, 25000, 3.2, 96, 30, 'Balanced growth with moderate risk. Ideal for steady portfolio expansion.', 'medium', '[\"Balanced Growth\", \"Moderate Risk\", \"Portfolio Diversification\", \"Steady Returns\"]'),
+                ('Gold Premium', 10000, 50000, 3.8, 114, 30, 'Premium investment with enhanced returns. Professional portfolio management.', 'medium', '[\"Enhanced Returns\", \"Professional Management\", \"Premium Service\", \"Medium Risk\"]'),
+                ('Platinum Elite', 15000, 75000, 4.2, 126, 30, 'Elite investment tier with superior returns and personalized strategy.', 'high', '[\"Superior Returns\", \"Personalized Strategy\", \"Elite Tier\", \"High Reward\"]'),
+                ('Diamond Exclusive', 25000, 100000, 4.8, 144, 30, 'Exclusive high-yield investment for serious investors seeking maximum growth.', 'high', '[\"High Yield\", \"Exclusive Access\", \"Maximum Growth\", \"Premium Support\"]'),
+                ('Titanium Premium', 35000, 150000, 5.2, 156, 30, 'Premium titanium-level investment with advanced risk management.', 'high', '[\"Advanced Risk Management\", \"Premium Returns\", \"Titanium Level\", \"Expert Advisory\"]'),
+                ('Crypto Growth', 5000, 50000, 6.5, 195, 30, 'Cryptocurrency portfolio with high growth potential and dynamic trading.', 'high', '[\"Cryptocurrency\", \"High Growth\", \"Dynamic Trading\", \"Market Analysis\"]'),
+                ('Real Estate Income', 20000, 200000, 3.5, 105, 30, 'Commercial real estate investments generating steady rental income.', 'medium', '[\"Real Estate\", \"Rental Income\", \"Property Investment\", \"Steady Cashflow\"]'),
+                ('Tech Innovation', 15000, 100000, 5.8, 174, 30, 'Technology sector investments focusing on innovation and disruption.', 'high', '[\"Technology\", \"Innovation\", \"High Growth\", \"Sector Focus\"]'),
+                ('Green Energy Fund', 10000, 80000, 4.5, 135, 30, 'Sustainable energy investments supporting environmental initiatives.', 'medium', '[\"Green Energy\", \"Sustainability\", \"ESG Focus\", \"Future Proof\"]'),
+                ('Healthcare Growth', 12000, 90000, 4.3, 129, 30, 'Healthcare sector investments with strong growth fundamentals.', 'medium', '[\"Healthcare\", \"Growth Sector\", \"Stable Demand\", \"Long Term\"]'),
+                ('AI Technology', 18000, 120000, 6.2, 186, 30, 'Artificial intelligence and machine learning technology investments.', 'high', '[\"Artificial Intelligence\", \"Machine Learning\", \"Cutting Edge\", \"High Potential\"]'),
+                ('Emerging Markets', 8000, 60000, 5.5, 165, 30, 'Diversified emerging markets portfolio with growth opportunities.', 'high', '[\"Emerging Markets\", \"Diversification\", \"Growth Opportunities\", \"Global Exposure\"]'),
+                ('Commodities Plus', 10000, 75000, 4.8, 144, 30, 'Commodities investment including precious metals and energy resources.', 'medium', '[\"Commodities\", \"Precious Metals\", \"Energy Resources\", \"Inflation Hedge\"]'),
+                ('Infrastructure Fund', 25000, 200000, 3.8, 114, 30, 'Global infrastructure development projects with long-term stability.', 'low', '[\"Infrastructure\", \"Long Term\", \"Stable Returns\", \"Government Backed\"]'),
+                ('Biotech Innovation', 20000, 150000, 6.8, 204, 30, 'Biotechnology and pharmaceutical research investments.', 'high', '[\"Biotechnology\", \"Pharmaceuticals\", \"Research\", \"High Risk High Reward\"]'),
+                ('Renewable Energy', 15000, 120000, 4.2, 126, 30, 'Renewable energy projects including solar and wind power generation.', 'medium', '[\"Renewable Energy\", \"Solar Power\", \"Wind Energy\", \"Sustainable\"]'),
+                ('E-commerce Growth', 12000, 90000, 5.2, 156, 30, 'E-commerce and digital retail sector investments.', 'medium', '[\"E-commerce\", \"Digital Retail\", \"Online Business\", \"Growth Sector\"]'),
+                ('Fintech Revolution', 18000, 140000, 6.5, 195, 30, 'Financial technology innovations and digital banking solutions.', 'high', '[\"Fintech\", \"Digital Banking\", \"Innovation\", \"Disruptive Technology\"]'),
+                ('Space Technology', 30000, 250000, 7.2, 216, 30, 'Space exploration and satellite technology investments.', 'high', '[\"Space Technology\", \"Satellite\", \"Exploration\", \"Cutting Edge\"]'),
+                ('Quantum Computing', 35000, 300000, 7.8, 234, 30, 'Quantum computing research and development investments.', 'high', '[\"Quantum Computing\", \"Research\", \"Advanced Technology\", \"Future Tech\"]'),
+                ('Metaverse Ventures', 20000, 180000, 6.8, 204, 30, 'Metaverse and virtual reality technology investments.', 'high', '[\"Metaverse\", \"Virtual Reality\", \"Digital Worlds\", \"Emerging Tech\"]'),
+                ('Blockchain Assets', 15000, 120000, 7.5, 225, 30, 'Blockchain technology and digital asset investments.', 'high', '[\"Blockchain\", \"Digital Assets\", \"Cryptocurrency\", \"Decentralized\"]'),
+                ('Sustainable Agriculture', 10000, 80000, 4.0, 120, 30, 'Sustainable farming and agricultural technology investments.', 'medium', '[\"Agriculture\", \"Sustainable\", \"Food Security\", \"Technology\"]'),
+                ('Water Resources', 12000, 100000, 3.8, 114, 30, 'Water treatment and resource management investments.', 'low', '[\"Water Resources\", \"Treatment\", \"Management\", \"Essential Service\"]')";
             
             $db->exec($plans_sql);
         }
@@ -3129,12 +4030,10 @@ function initializeDatabase($db) {
 
 // Initialize and run the application
 try {
-    // Create logs directory if it doesn't exist
     if (!is_dir(__DIR__ . '/logs')) {
         mkdir(__DIR__ . '/logs', 0755, true);
     }
     
-    // Create uploads directory if it doesn't exist
     if (!is_dir(UPLOAD_PATH)) {
         mkdir(UPLOAD_PATH, 0755, true);
     }
@@ -3142,7 +4041,6 @@ try {
     $database = new Database();
     $db = $database->getConnection();
     
-    // Initialize database tables
     if (initializeDatabase($db)) {
         $app = new Application();
         $app->handleRequest();

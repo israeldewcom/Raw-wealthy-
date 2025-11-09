@@ -1,0 +1,11 @@
+.git
+.gitignore
+README.md
+docker-compose.yml
+.env
+node_modules
+*.log
+.DS_Store
+.vscode
+.idea
+docker/mysql-init/ # Keep this but ignore in general context

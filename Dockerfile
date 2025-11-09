@@ -38,10 +38,7 @@ RUN docker-php-ext-install \
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Enable Apache modules
-RUN a2enmod rewrite headers
-
-# Copy Apache configuration
-COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
+RUN a2enmod rewrite
 
 # Copy application files
 COPY . .
@@ -56,6 +53,21 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html \
     && chmod -R 777 /var/www/html/logs \
     && chmod -R 777 /var/www/html/uploads
+
+# Create Apache configuration on-the-fly
+RUN echo '<VirtualHost *:80>\n\
+    ServerName localhost\n\
+    DocumentRoot /var/www/html\n\
+    \n\
+    <Directory /var/www/html>\n\
+        Options -Indexes +FollowSymLinks\n\
+        AllowOverride All\n\
+        Require all granted\n\
+    </Directory>\n\
+    \n\
+    ErrorLog ${APACHE_LOG_DIR}/error.log\n\
+    CustomLog ${APACHE_LOG_DIR}/access.log combined\n\
+</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
 
 # Expose port
 EXPOSE 80

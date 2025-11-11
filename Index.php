@@ -28,7 +28,7 @@ $allowed_origins = [
     'https://rawwealthy.com',
     'https://www.rawwealthy.com',
     'https://app.rawwealthy.com',
-    'https://raw-wealthy-yibn.onrender.com'
+    'https://raw-teal.vercel.app/'
 ];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowed_origins)) {
@@ -56,7 +56,7 @@ session_start([
 // Environment-based configuration
 define('APP_NAME', 'Raw Wealthy Investment Platform');
 define('APP_VERSION', '12.0.0');
-define('BASE_URL', 'https://raw-wealthy-yibn.onrender.com/');
+define('BASE_URL', 'https://raw-teal.vercel.app/');
 define('API_BASE', '/api/');
 define('UPLOAD_PATH', __DIR__ . '/uploads/');
 define('MAX_FILE_SIZE', 50 * 1024 * 1024);

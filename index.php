@@ -1,9 +1,10 @@
 <?php
 /* 
  * Raw Wealthy Investment Platform - Enterprise Production Edition v12.0
- * FULLY INTEGRATED WITH FRONTEND - COMPLETE API COMPATIBILITY
+ * ENHANCED & UPGRADED WITH FULL POSTGRESQL INTEGRATION
  * Advanced Financial Platform with Real-time Processing
  * SECURE, SCALABLE, PRODUCTION-READY WITH FULL FRONTEND INTEGRATION
+ * POSTGRESQL DATABASE INTEGRATION COMPLETE
  */
 
 // Enhanced error reporting for production
@@ -28,7 +29,7 @@ $allowed_origins = [
     'https://rawwealthy.com',
     'https://www.rawwealthy.com',
     'https://app.rawwealthy.com',
-    'https://aw-wheat.vercel.app/'
+    'https://aw-wheat.vercel.app'
 ];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (in_array($origin, $allowed_origins)) {
@@ -71,6 +72,13 @@ define('MIN_INVESTMENT', 3500);
 define('DAILY_INTEREST_CALCULATION_HOUR', 9);
 define('CSRF_SECRET', getenv('CSRF_SECRET') ?: 'csrf-secure-key-2024-change-in-production');
 
+// PostgreSQL Database Configuration
+define('DB_HOST', getenv('DB_HOST') ?: 'dpg-d4a8v7hr0fns73fgb440-a.oregon-postgres.render.com');
+define('DB_NAME', getenv('DB_NAME') ?: 'raw_wealthy');
+define('DB_USER', getenv('DB_USER') ?: 'raw_wealthy_user');
+define('DB_PASS', getenv('DB_PASS') ?: 'M0fVHwK7Cexa8zms6Ua1tDlXVXbFdZxh');
+define('DB_PORT', getenv('DB_PORT') ?: '5432');
+
 // Create directories if they don't exist
 $directories = ['logs', 'uploads', 'uploads/proofs', 'uploads/kyc', 'uploads/avatars', 'cache', 'backups'];
 foreach ($directories as $dir) {
@@ -84,35 +92,38 @@ class Database {
     private $db_name;
     private $username;
     private $password;
+    private $port;
     private $conn;
     private $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
-        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
         PDO::ATTR_PERSISTENT => true
     ];
 
     public function __construct() {
-        $this->host = getenv('DB_HOST') ?: 'localhost';
-        $this->db_name = getenv('DB_NAME') ?: 'raw_wealthy_enterprise';
-        $this->username = getenv('DB_USER') ?: 'root';
-        $this->password = getenv('DB_PASS') ?: '';
+        $this->host = DB_HOST;
+        $this->db_name = DB_NAME;
+        $this->username = DB_USER;
+        $this->password = DB_PASS;
+        $this->port = DB_PORT;
     }
 
     public function getConnection() {
         if ($this->conn === null) {
             try {
-                $dsn = "mysql:host={$this->host};dbname={$this->db_name};charset=utf8mb4";
+                $dsn = "pgsql:host={$this->host};port={$this->port};dbname={$this->db_name}";
                 $this->conn = new PDO($dsn, $this->username, $this->password, $this->options);
                 
                 // Test connection
                 $this->conn->query("SELECT 1");
-            } catch(PDOException $e) {
-                error_log("Database connection error: " . $e->getMessage());
                 
-                // Create database if it doesn't exist
-                if ($e->getCode() === 1049) {
+                error_log("PostgreSQL Connected Successfully");
+            } catch(PDOException $e) {
+                error_log("PostgreSQL connection error: " . $e->getMessage());
+                
+                // Create database if it doesn't exist (PostgreSQL requires different approach)
+                if (strpos($e->getMessage(), 'database') !== false) {
                     $this->createDatabase();
                 } else {
                     throw new Exception("Database connection failed. Please try again later.");
@@ -124,13 +135,14 @@ class Database {
 
     private function createDatabase() {
         try {
-            $temp_dsn = "mysql:host={$this->host};charset=utf8mb4";
+            // For PostgreSQL, we need to connect to postgres database first
+            $temp_dsn = "pgsql:host={$this->host};port={$this->port};dbname=postgres";
             $temp_conn = new PDO($temp_dsn, $this->username, $this->password);
-            $temp_conn->exec("CREATE DATABASE IF NOT EXISTS {$this->db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $temp_conn->exec("CREATE DATABASE {$this->db_name}");
             $temp_conn = null;
             
-            // Reconnect with database
-            $dsn = "mysql:host={$this->host};dbname={$this->db_name};charset=utf8mb4";
+            // Reconnect with the new database
+            $dsn = "pgsql:host={$this->host};port={$this->port};dbname={$this->db_name}";
             $this->conn = new PDO($dsn, $this->username, $this->password, $this->options);
             
             // Initialize tables
@@ -146,7 +158,7 @@ class Database {
             $sql = [
                 // Users table
                 "CREATE TABLE IF NOT EXISTS users (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    id SERIAL PRIMARY KEY,
                     full_name VARCHAR(255) NOT NULL,
                     email VARCHAR(255) UNIQUE NOT NULL,
                     phone VARCHAR(50),
@@ -157,249 +169,223 @@ class Database {
                     referral_earnings DECIMAL(15,2) DEFAULT 0.00,
                     referral_code VARCHAR(20) UNIQUE,
                     referred_by VARCHAR(20),
-                    role ENUM('user','admin','super_admin') DEFAULT 'user',
+                    role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user','admin','super_admin')),
                     kyc_verified BOOLEAN DEFAULT FALSE,
-                    kyc_data JSON,
-                    status ENUM('active','suspended','pending') DEFAULT 'active',
+                    kyc_data JSONB,
+                    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active','suspended','pending')),
                     two_factor_enabled BOOLEAN DEFAULT FALSE,
                     two_factor_secret VARCHAR(100),
-                    risk_tolerance ENUM('low','medium','high') DEFAULT 'medium',
+                    risk_tolerance VARCHAR(20) DEFAULT 'medium' CHECK (risk_tolerance IN ('low','medium','high')),
                     investment_strategy VARCHAR(100),
                     email_verified BOOLEAN DEFAULT FALSE,
                     avatar VARCHAR(255),
-                    last_login TIMESTAMP NULL,
+                    last_login TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_email (email),
-                    INDEX idx_referral_code (referral_code),
-                    INDEX idx_status (status)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // Investment plans table
                 "CREATE TABLE IF NOT EXISTS investment_plans (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    id SERIAL PRIMARY KEY,
                     name VARCHAR(255) NOT NULL,
                     description TEXT,
                     min_amount DECIMAL(15,2) NOT NULL,
                     max_amount DECIMAL(15,2),
                     daily_interest DECIMAL(5,2) NOT NULL,
                     total_interest DECIMAL(5,2) NOT NULL,
-                    duration INT NOT NULL,
-                    risk_level ENUM('low','medium','high') DEFAULT 'medium',
-                    status ENUM('active','inactive') DEFAULT 'active',
+                    duration INTEGER NOT NULL,
+                    risk_level VARCHAR(20) DEFAULT 'medium' CHECK (risk_level IN ('low','medium','high')),
+                    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active','inactive')),
                     features TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_status (status),
-                    INDEX idx_risk_level (risk_level)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // Investments table
                 "CREATE TABLE IF NOT EXISTS investments (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT NOT NULL,
-                    plan_id INT NOT NULL,
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    plan_id INTEGER NOT NULL REFERENCES investment_plans(id) ON DELETE CASCADE,
                     amount DECIMAL(15,2) NOT NULL,
                     daily_interest DECIMAL(5,2) NOT NULL,
                     total_interest DECIMAL(5,2) NOT NULL,
-                    duration INT NOT NULL,
+                    duration INTEGER NOT NULL,
                     expected_earnings DECIMAL(15,2) NOT NULL,
                     earned_interest DECIMAL(15,2) DEFAULT 0.00,
                     auto_renew BOOLEAN DEFAULT FALSE,
-                    risk_level ENUM('low','medium','high') DEFAULT 'medium',
+                    risk_level VARCHAR(20) DEFAULT 'medium' CHECK (risk_level IN ('low','medium','high')),
                     proof_image VARCHAR(255),
-                    status ENUM('pending','active','completed','cancelled') DEFAULT 'pending',
-                    start_date TIMESTAMP NULL,
-                    end_date TIMESTAMP NULL,
-                    last_interest_calculation TIMESTAMP NULL,
+                    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending','active','completed','cancelled')),
+                    start_date TIMESTAMP,
+                    end_date TIMESTAMP,
+                    last_interest_calculation TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (plan_id) REFERENCES investment_plans(id) ON DELETE CASCADE,
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_status (status),
-                    INDEX idx_start_date (start_date)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // Transactions table
                 "CREATE TABLE IF NOT EXISTS transactions (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT NOT NULL,
-                    type ENUM('deposit','withdrawal','investment','interest','referral_bonus','transfer') NOT NULL,
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    type VARCHAR(20) NOT NULL CHECK (type IN ('deposit','withdrawal','investment','interest','referral_bonus','transfer')),
                     amount DECIMAL(15,2) NOT NULL,
                     fee DECIMAL(15,2) DEFAULT 0.00,
                     net_amount DECIMAL(15,2) NOT NULL,
                     description TEXT,
-                    status ENUM('pending','completed','failed','cancelled') DEFAULT 'pending',
+                    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending','completed','failed','cancelled')),
                     reference VARCHAR(100) UNIQUE,
                     proof_image VARCHAR(255),
-                    metadata JSON,
+                    metadata JSONB,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_type (type),
-                    INDEX idx_status (status),
-                    INDEX idx_reference (reference)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // Deposits table
                 "CREATE TABLE IF NOT EXISTS deposits (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT NOT NULL,
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     amount DECIMAL(15,2) NOT NULL,
-                    payment_method ENUM('bank_transfer','crypto','paypal','card') NOT NULL,
+                    payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('bank_transfer','crypto','paypal','card')),
                     transaction_hash VARCHAR(255),
                     proof_image VARCHAR(255),
-                    status ENUM('pending','approved','rejected') DEFAULT 'pending',
+                    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
                     admin_notes TEXT,
                     reference VARCHAR(100) UNIQUE,
-                    processed_by INT NULL,
-                    processed_at TIMESTAMP NULL,
+                    processed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    processed_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL,
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_status (status)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // Withdrawal requests table
                 "CREATE TABLE IF NOT EXISTS withdrawal_requests (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT NOT NULL,
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     amount DECIMAL(15,2) NOT NULL,
                     fee DECIMAL(15,2) DEFAULT 0.00,
                     net_amount DECIMAL(15,2) NOT NULL,
-                    payment_method ENUM('bank_transfer','crypto','paypal') NOT NULL,
+                    payment_method VARCHAR(20) NOT NULL CHECK (payment_method IN ('bank_transfer','crypto','paypal')),
                     bank_name VARCHAR(255),
                     account_number VARCHAR(50),
                     account_name VARCHAR(255),
                     wallet_address VARCHAR(255),
                     paypal_email VARCHAR(255),
-                    status ENUM('pending','approved','rejected','processed') DEFAULT 'pending',
+                    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','processed')),
                     admin_notes TEXT,
                     user_notes TEXT,
                     reference VARCHAR(100) UNIQUE,
-                    processed_by INT NULL,
-                    processed_at TIMESTAMP NULL,
+                    processed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    processed_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL,
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_status (status)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // Referral earnings table
                 "CREATE TABLE IF NOT EXISTS referral_earnings (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    referrer_id INT NOT NULL,
-                    referred_user_id INT NOT NULL,
+                    id SERIAL PRIMARY KEY,
+                    referrer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    referred_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     amount DECIMAL(15,2) NOT NULL,
-                    type ENUM('signup_bonus','investment_commission') DEFAULT 'signup_bonus',
+                    type VARCHAR(20) DEFAULT 'signup_bonus' CHECK (type IN ('signup_bonus','investment_commission')),
                     description TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (referrer_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (referred_user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    INDEX idx_referrer_id (referrer_id)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // Notifications table
                 "CREATE TABLE IF NOT EXISTS notifications (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT NOT NULL,
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     title VARCHAR(255) NOT NULL,
                     message TEXT NOT NULL,
-                    type ENUM('info','success','warning','error') DEFAULT 'info',
+                    type VARCHAR(20) DEFAULT 'info' CHECK (type IN ('info','success','warning','error')),
                     is_read BOOLEAN DEFAULT FALSE,
                     action_url VARCHAR(500),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_is_read (is_read)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // Audit logs table
                 "CREATE TABLE IF NOT EXISTS audit_logs (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT NULL,
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
                     action VARCHAR(100) NOT NULL,
                     description TEXT,
                     ip_address VARCHAR(45),
                     user_agent TEXT,
-                    metadata JSON,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_action (action),
-                    INDEX idx_created_at (created_at)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    metadata JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // KYC submissions table
                 "CREATE TABLE IF NOT EXISTS kyc_submissions (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT NOT NULL,
-                    document_type ENUM('id_card','passport','drivers_license','utility_bill') NOT NULL,
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    document_type VARCHAR(20) NOT NULL CHECK (document_type IN ('id_card','passport','drivers_license','utility_bill')),
                     document_number VARCHAR(100),
                     front_image VARCHAR(255) NOT NULL,
                     back_image VARCHAR(255),
                     selfie_image VARCHAR(255),
-                    status ENUM('pending','approved','rejected') DEFAULT 'pending',
+                    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
                     admin_notes TEXT,
-                    verified_by INT NULL,
-                    verified_at TIMESTAMP NULL,
+                    verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    verified_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL,
-                    UNIQUE KEY unique_user_document (user_id, document_type),
-                    INDEX idx_status (status)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (user_id, document_type)
+                )",
 
                 // Support tickets table
                 "CREATE TABLE IF NOT EXISTS support_tickets (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT NOT NULL,
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     subject VARCHAR(255) NOT NULL,
                     message TEXT NOT NULL,
-                    status ENUM('open','in_progress','resolved','closed') DEFAULT 'open',
-                    priority ENUM('low','medium','high','urgent') DEFAULT 'medium',
-                    category ENUM('general','technical','billing','investment','withdrawal','other') DEFAULT 'general',
+                    status VARCHAR(20) DEFAULT 'open' CHECK (status IN ('open','in_progress','resolved','closed')),
+                    priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low','medium','high','urgent')),
+                    category VARCHAR(20) DEFAULT 'general' CHECK (category IN ('general','technical','billing','investment','withdrawal','other')),
                     admin_notes TEXT,
-                    assigned_to INT NULL,
-                    resolved_at TIMESTAMP NULL,
+                    assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    resolved_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_status (status),
-                    INDEX idx_category (category)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
 
                 // Two-factor authentication table
                 "CREATE TABLE IF NOT EXISTS two_factor_auth (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id INT NOT NULL,
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
                     secret VARCHAR(100) NOT NULL,
                     backup_codes TEXT,
                     is_active BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    UNIQUE KEY unique_user_id (user_id)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )"
             ];
 
             foreach ($sql as $query) {
                 $this->conn->exec($query);
             }
 
+            // Create indexes for better performance
+            $indexes = [
+                "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+                "CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)",
+                "CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)",
+                "CREATE INDEX IF NOT EXISTS idx_investments_user_id ON investments(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_investments_status ON investments(status)",
+                "CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_transactions_reference ON transactions(reference)",
+                "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id)"
+            ];
+
+            foreach ($indexes as $index) {
+                $this->conn->exec($index);
+            }
+
             // Seed default data
             $this->seedDefaultData();
 
-            error_log("Database initialized successfully");
+            error_log("PostgreSQL Database initialized successfully");
 
         } catch (Exception $e) {
             error_log("Database initialization error: " . $e->getMessage());
@@ -524,6 +510,7 @@ class Database {
     }
 }
 
+// ENHANCED SECURITY CLASS WITH ADDITIONAL FEATURES
 class Security {
     public static function generateToken($payload) {
         $header = ['typ' => 'JWT', 'alg' => 'HS256'];
@@ -725,10 +712,69 @@ class Security {
         if (!preg_match('/[0-9]/', $password)) {
             throw new Exception('Password must contain at least one number');
         }
+        if (!preg_match('/[!@#$%^&*(),.?":{}|<>]/', $password)) {
+            throw new Exception('Password must contain at least one special character');
+        }
         return true;
+    }
+
+    // NEW: Advanced IP blocking
+    public static function checkIPBlock($ip = null) {
+        $ip = $ip ?: $_SERVER['REMOTE_ADDR'];
+        $block_file = __DIR__ . '/cache/blocked_ips.json';
+        
+        if (file_exists($block_file)) {
+            $blocked_ips = json_decode(file_get_contents($block_file), true);
+            if (in_array($ip, $blocked_ips)) {
+                throw new Exception('Access denied from your IP address');
+            }
+        }
+        return true;
+    }
+
+    // NEW: Session security
+    public static function validateSession() {
+        if (!isset($_SESSION['user_agent']) || $_SESSION['user_agent'] !== ($_SERVER['HTTP_USER_AGENT'] ?? '')) {
+            session_destroy();
+            throw new Exception('Session validation failed');
+        }
+        
+        if (!isset($_SESSION['ip_address']) || $_SESSION['ip_address'] !== ($_SERVER['REMOTE_ADDR'] ?? '')) {
+            session_destroy();
+            throw new Exception('IP address changed');
+        }
+        
+        return true;
+    }
+
+    // NEW: Input validation with regex patterns
+    public static function validateInputPattern($input, $pattern, $field_name) {
+        if (!preg_match($pattern, $input)) {
+            throw new Exception("Invalid $field_name format");
+        }
+        return true;
+    }
+
+    // NEW: XSS prevention
+    public static function preventXSS($data) {
+        if (is_array($data)) {
+            return array_map([self::class, 'preventXSS'], $data);
+        }
+        return htmlspecialchars($data, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
+    // NEW: SQL injection prevention
+    public static function preventSQLInjection($data, $conn) {
+        if (is_array($data)) {
+            return array_map(function($item) use ($conn) {
+                return $conn->quote($item);
+            }, $data);
+        }
+        return $conn->quote($data);
     }
 }
 
+// ENHANCED RESPONSE CLASS WITH ADDITIONAL FEATURES
 class Response {
     public static function json($data, $status = 200) {
         http_response_code($status);
@@ -788,19 +834,56 @@ class Response {
         $token = Security::generateCSRFToken();
         self::success(['csrf_token' => $token]);
     }
+
+    // NEW: Pagination response
+    public static function paginated($data, $total, $page, $per_page, $message = '') {
+        $total_pages = ceil($total / $per_page);
+        self::success([
+            'data' => $data,
+            'pagination' => [
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $per_page,
+                'total_pages' => $total_pages,
+                'has_next' => $page < $total_pages,
+                'has_prev' => $page > 1
+            ]
+        ], $message);
+    }
+
+    // NEW: Download response
+    public static function download($file_path, $filename = null) {
+        if (!file_exists($file_path)) {
+            self::error('File not found', 404);
+        }
+
+        $filename = $filename ?: basename($file_path);
+        $file_size = filesize($file_path);
+        $mime_type = mime_content_type($file_path);
+
+        header('Content-Type: ' . $mime_type);
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . $file_size);
+        header('Cache-Control: private, max-age=86400');
+        
+        readfile($file_path);
+        exit;
+    }
 }
 
+// ENHANCED FILE UPLOADER WITH ADDITIONAL FEATURES
 class FileUploader {
     private $allowed_extensions = [
         'image' => ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-        'document' => ['pdf', 'doc', 'docx', 'txt']
+        'document' => ['pdf', 'doc', 'docx', 'txt'],
+        'archive' => ['zip', 'rar', '7z']
     ];
 
     public function upload($file, $type = 'general', $user_id = null) {
         try {
             $mime_type = Security::validateFile($file);
             
-            $category = strpos($mime_type, 'image/') === 0 ? 'image' : 'document';
+            $category = $this->getFileCategory($mime_type);
             
             $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
             $filename = $this->generateFilename($extension, $type, $user_id);
@@ -816,6 +899,11 @@ class FileUploader {
                 throw new Exception('Failed to move uploaded file');
             }
             
+            // NEW: Create thumbnail for images
+            if ($category === 'image') {
+                $this->createThumbnail($full_path, $upload_path . 'thumb_' . $filename);
+            }
+            
             $public_url = BASE_URL . "api/files/{$type}/{$filename}";
             
             return [
@@ -825,6 +913,7 @@ class FileUploader {
                 'url' => $public_url,
                 'size' => $file['size'],
                 'mime_type' => $mime_type,
+                'category' => $category,
                 'uploaded_at' => time()
             ];
             
@@ -841,16 +930,109 @@ class FileUploader {
         return "{$user_prefix}{$type}_{$timestamp}_{$random}.{$extension}";
     }
 
+    private function getFileCategory($mime_type) {
+        if (strpos($mime_type, 'image/') === 0) return 'image';
+        if (strpos($mime_type, 'application/pdf') === 0) return 'document';
+        if (strpos($mime_type, 'application/') === 0) return 'archive';
+        return 'general';
+    }
+
+    // NEW: Create thumbnail for images
+    private function createThumbnail($source_path, $thumb_path, $max_width = 200, $max_height = 200) {
+        try {
+            list($src_width, $src_height, $image_type) = getimagesize($source_path);
+            
+            switch ($image_type) {
+                case IMAGETYPE_JPEG:
+                    $src_image = imagecreatefromjpeg($source_path);
+                    break;
+                case IMAGETYPE_PNG:
+                    $src_image = imagecreatefrompng($source_path);
+                    break;
+                case IMAGETYPE_GIF:
+                    $src_image = imagecreatefromgif($source_path);
+                    break;
+                default:
+                    return false;
+            }
+            
+            $src_ratio = $src_width / $src_height;
+            $thumb_ratio = $max_width / $max_height;
+            
+            if ($src_ratio > $thumb_ratio) {
+                $new_height = $max_height;
+                $new_width = (int) ($max_height * $src_ratio);
+            } else {
+                $new_width = $max_width;
+                $new_height = (int) ($max_width / $src_ratio);
+            }
+            
+            $thumb_image = imagecreatetruecolor($max_width, $max_height);
+            imagecopyresampled($thumb_image, $src_image, 0, 0, 0, 0, $new_width, $new_height, $src_width, $src_height);
+            
+            switch ($image_type) {
+                case IMAGETYPE_JPEG:
+                    imagejpeg($thumb_image, $thumb_path, 85);
+                    break;
+                case IMAGETYPE_PNG:
+                    imagepng($thumb_image, $thumb_path, 8);
+                    break;
+                case IMAGETYPE_GIF:
+                    imagegif($thumb_image, $thumb_path);
+                    break;
+            }
+            
+            imagedestroy($src_image);
+            imagedestroy($thumb_image);
+            
+            return true;
+        } catch (Exception $e) {
+            error_log("Thumbnail creation error: " . $e->getMessage());
+            return false;
+        }
+    }
+
     public function delete($file_path) {
         if (file_exists($file_path) && is_file($file_path)) {
+            // NEW: Also delete thumbnail if exists
+            $dir = dirname($file_path);
+            $filename = basename($file_path);
+            $thumb_path = $dir . '/thumb_' . $filename;
+            
+            if (file_exists($thumb_path)) {
+                unlink($thumb_path);
+            }
+            
             return unlink($file_path);
         }
         return false;
     }
+
+    // NEW: Multiple file upload
+    public function uploadMultiple($files, $type = 'general', $user_id = null) {
+        $results = [];
+        foreach ($files['name'] as $key => $name) {
+            if ($files['error'][$key] === UPLOAD_ERR_OK) {
+                $file = [
+                    'name' => $files['name'][$key],
+                    'type' => $files['type'][$key],
+                    'tmp_name' => $files['tmp_name'][$key],
+                    'error' => $files['error'][$key],
+                    'size' => $files['size'][$key]
+                ];
+                
+                try {
+                    $results[] = $this->upload($file, $type, $user_id);
+                } catch (Exception $e) {
+                    $results[] = ['error' => $e->getMessage(), 'file' => $name];
+                }
+            }
+        }
+        return $results;
+    }
 }
 
-// ENHANCED MODELS WITH FULL FRONTEND INTEGRATION
-
+// ENHANCED USER MODEL WITH POSTGRESQL SUPPORT
 class UserModel {
     private $conn;
     private $table = 'users';
@@ -863,16 +1045,10 @@ class UserModel {
         $this->conn->beginTransaction();
         
         try {
-            $query = "INSERT INTO {$this->table} SET 
-                full_name=:full_name, 
-                email=:email, 
-                phone=:phone, 
-                password_hash=:password_hash, 
-                referral_code=:referral_code, 
-                referred_by=:referred_by,
-                risk_tolerance=:risk_tolerance, 
-                investment_strategy=:investment_strategy,
-                email_verified=:email_verified";
+            $query = "INSERT INTO {$this->table} 
+                (full_name, email, phone, password_hash, referral_code, referred_by, risk_tolerance, investment_strategy, email_verified) 
+                VALUES (:full_name, :email, :phone, :password_hash, :referral_code, :referred_by, :risk_tolerance, :investment_strategy, :email_verified) 
+                RETURNING id";
 
             $stmt = $this->conn->prepare($query);
             
@@ -884,14 +1060,16 @@ class UserModel {
             $stmt->bindValue(':referred_by', $data['referred_by']);
             $stmt->bindValue(':risk_tolerance', $data['risk_tolerance'] ?? 'medium');
             $stmt->bindValue(':investment_strategy', $data['investment_strategy'] ?? 'balanced');
-            $stmt->bindValue(':email_verified', $data['email_verified'] ?? false);
+            $stmt->bindValue(':email_verified', $data['email_verified'] ?? false, PDO::PARAM_BOOL);
 
-            if (!$stmt->execute()) {
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $user_id = $result['id'];
+            
+            if (!$user_id) {
                 throw new Exception('Failed to create user');
             }
 
-            $user_id = $this->conn->lastInsertId();
-            
             // Process referral bonus if applicable
             if (!empty($data['referred_by'])) {
                 $this->processReferralBonus($data['referred_by'], $user_id, $data['full_name']);
@@ -1081,6 +1259,36 @@ class UserModel {
         return $stmt->fetch()['total'];
     }
 
+    // NEW: Advanced user search
+    public function searchUsers($search_term, $page = 1, $per_page = 20) {
+        $offset = ($page - 1) * $per_page;
+        $query = "SELECT id, full_name, email, phone, balance, status, created_at 
+                  FROM {$this->table} 
+                  WHERE full_name ILIKE ? OR email ILIKE ? OR phone ILIKE ?
+                  ORDER BY created_at DESC 
+                  LIMIT ? OFFSET ?";
+        
+        $search_pattern = "%{$search_term}%";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([$search_pattern, $search_pattern, $search_pattern, $per_page, $offset]);
+        return $stmt->fetchAll();
+    }
+
+    // NEW: User activity tracking
+    public function logActivity($user_id, $activity, $details = null) {
+        $query = "INSERT INTO audit_logs (user_id, action, description, ip_address, user_agent, metadata) 
+                  VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([
+            $user_id,
+            $activity,
+            $details,
+            $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+            $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+            $details ? json_encode($details) : null
+        ]);
+    }
+
     private function processReferralBonus($referral_code, $new_user_id, $new_user_name) {
         $referrer = $this->getByReferralCode($referral_code);
         if ($referrer) {
@@ -1104,7 +1312,7 @@ class UserModel {
     }
 
     private function logReferralBonus($referrer_id, $referred_id, $amount) {
-        $query = "INSERT INTO referral_earnings SET referrer_id=?, referred_user_id=?, amount=?, type='signup_bonus'";
+        $query = "INSERT INTO referral_earnings (referrer_id, referred_user_id, amount, type) VALUES (?, ?, ?, 'signup_bonus')";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([$referrer_id, $referred_id, $amount]);
     }
@@ -1116,13 +1324,13 @@ class UserModel {
     }
 
     private function createNotification($user_id, $title, $message, $type = 'info') {
-        $query = "INSERT INTO notifications SET user_id=?, title=?, message=?, type=?";
+        $query = "INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([$user_id, $title, $message, $type]);
     }
 
     private function logAudit($user_id, $action, $description) {
-        $query = "INSERT INTO audit_logs SET user_id=?, action=?, description=?, ip_address=?, user_agent=?";
+        $query = "INSERT INTO audit_logs (user_id, action, description, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([
             $user_id,
@@ -1134,7 +1342,7 @@ class UserModel {
     }
 }
 
-// Investment Plan Model
+// ENHANCED INVESTMENT PLAN MODEL
 class InvestmentPlanModel {
     private $conn;
     private $table = 'investment_plans';
@@ -1171,9 +1379,51 @@ class InvestmentPlanModel {
         $stmt->execute([$id]);
         return $stmt->fetch();
     }
+
+    // NEW: Get popular plans
+    public function getPopularPlans($limit = 3) {
+        $query = "SELECT * FROM {$this->table} 
+                  WHERE status = 'active' AND min_amount <= 5000 AND daily_interest >= 3.0
+                  ORDER BY daily_interest DESC 
+                  LIMIT ?";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([$limit]);
+        return $stmt->fetchAll();
+    }
+
+    // NEW: Update plan status
+    public function updateStatus($plan_id, $status) {
+        $query = "UPDATE {$this->table} SET status = ? WHERE id = ?";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([$status, $plan_id]);
+    }
+
+    // NEW: Create new plan
+    public function create($data) {
+        $query = "INSERT INTO {$this->table} 
+                  (name, description, min_amount, max_amount, daily_interest, total_interest, duration, risk_level, features) 
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) 
+                  RETURNING id";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([
+            $data['name'],
+            $data['description'],
+            $data['min_amount'],
+            $data['max_amount'] ?? null,
+            $data['daily_interest'],
+            $data['total_interest'],
+            $data['duration'],
+            $data['risk_level'],
+            $data['features'] ?? ''
+        ]);
+        
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result['id'];
+    }
 }
 
-// Enhanced Investment Model with Interest Calculation
+// ENHANCED INVESTMENT MODEL WITH INTEREST CALCULATION
 class InvestmentModel {
     private $conn;
     private $table = 'investments';
@@ -1186,18 +1436,10 @@ class InvestmentModel {
         $this->conn->beginTransaction();
         
         try {
-            $query = "INSERT INTO {$this->table} SET 
-                user_id=:user_id, 
-                plan_id=:plan_id, 
-                amount=:amount, 
-                daily_interest=:daily_interest, 
-                total_interest=:total_interest, 
-                duration=:duration,
-                expected_earnings=:expected_earnings, 
-                auto_renew=:auto_renew, 
-                risk_level=:risk_level,
-                proof_image=:proof_image,
-                status=:status";
+            $query = "INSERT INTO {$this->table} 
+                (user_id, plan_id, amount, daily_interest, total_interest, duration, expected_earnings, auto_renew, risk_level, proof_image, status) 
+                VALUES (:user_id, :plan_id, :amount, :daily_interest, :total_interest, :duration, :expected_earnings, :auto_renew, :risk_level, :proof_image, :status) 
+                RETURNING id";
 
             $stmt = $this->conn->prepare($query);
             
@@ -1210,17 +1452,19 @@ class InvestmentModel {
             $stmt->bindValue(':total_interest', $data['total_interest']);
             $stmt->bindValue(':duration', $data['duration']);
             $stmt->bindValue(':expected_earnings', $expected_earnings);
-            $stmt->bindValue(':auto_renew', $data['auto_renew'] ?? false);
+            $stmt->bindValue(':auto_renew', $data['auto_renew'] ?? false, PDO::PARAM_BOOL);
             $stmt->bindValue(':risk_level', $data['risk_level']);
             $stmt->bindValue(':proof_image', $data['proof_image'] ?? '');
             $stmt->bindValue(':status', $data['status'] ?? 'pending');
 
-            if (!$stmt->execute()) {
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $investment_id = $result['id'];
+            
+            if (!$investment_id) {
                 throw new Exception('Failed to create investment');
             }
 
-            $investment_id = $this->conn->lastInsertId();
-            
             // Update user's total invested
             $this->updateUserInvestmentStats($data['user_id'], $data['amount']);
             
@@ -1339,6 +1583,30 @@ class InvestmentModel {
         return $stmt->fetch();
     }
 
+    // NEW: Get investment statistics
+    public function getInvestmentStats($user_id = null) {
+        $query = "SELECT 
+            COUNT(*) as total_investments,
+            COALESCE(SUM(amount), 0) as total_invested,
+            COALESCE(SUM(expected_earnings), 0) as total_expected,
+            COALESCE(SUM(earned_interest), 0) as total_earned,
+            COUNT(CASE WHEN status = 'active' THEN 1 END) as active_investments,
+            COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_investments
+            FROM {$this->table}";
+        
+        if ($user_id) {
+            $query .= " WHERE user_id = ?";
+        }
+        
+        $stmt = $this->conn->prepare($query);
+        if ($user_id) {
+            $stmt->execute([$user_id]);
+        } else {
+            $stmt->execute();
+        }
+        return $stmt->fetch();
+    }
+
     // Calculate daily interest for active investments
     public function calculateDailyInterest() {
         try {
@@ -1350,6 +1618,12 @@ class InvestmentModel {
                 // Skip if interest already calculated today
                 if ($investment['last_interest_calculation'] && 
                     date('Y-m-d', strtotime($investment['last_interest_calculation'])) === $today) {
+                    continue;
+                }
+
+                // Skip if investment has ended
+                if ($investment['end_date'] && strtotime($investment['end_date']) < time()) {
+                    $this->completeInvestment($investment['id']);
                     continue;
                 }
 
@@ -1370,9 +1644,6 @@ class InvestmentModel {
                     "Daily interest from investment"
                 );
 
-                // Check if investment period completed
-                $this->checkInvestmentCompletion($investment);
-                
                 $processed_count++;
             }
             
@@ -1425,12 +1696,6 @@ class InvestmentModel {
         $stmt->execute([$interest, $user_id]);
     }
 
-    private function checkInvestmentCompletion($investment) {
-        if (strtotime($investment['end_date']) <= time()) {
-            $this->completeInvestment($investment['id']);
-        }
-    }
-
     private function completeInvestment($investment_id) {
         $query = "UPDATE {$this->table} SET status='completed' WHERE id=?";
         $stmt = $this->conn->prepare($query);
@@ -1456,20 +1721,20 @@ class InvestmentModel {
         $reference = Security::generateTransactionReference();
         $net_amount = $type === 'withdrawal' ? $amount * (1 - WITHDRAWAL_FEE_RATE) : $amount;
         
-        $query = "INSERT INTO transactions SET 
-            user_id=?, type=?, amount=?, net_amount=?, description=?, reference=?, status='completed'";
+        $query = "INSERT INTO transactions (user_id, type, amount, net_amount, description, reference, status) 
+                  VALUES (?, ?, ?, ?, ?, ?, 'completed')";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([$user_id, $type, abs($amount), $net_amount, $description, $reference]);
     }
 
     private function createNotification($user_id, $title, $message, $type = 'info') {
-        $query = "INSERT INTO notifications SET user_id=?, title=?, message=?, type=?";
+        $query = "INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([$user_id, $title, $message, $type]);
     }
 }
 
-// Transaction Model
+// ENHANCED TRANSACTION MODEL
 class TransactionModel {
     private $conn;
     private $table = 'transactions';
@@ -1493,16 +1758,10 @@ class TransactionModel {
     }
 
     public function create($data) {
-        $query = "INSERT INTO {$this->table} SET 
-            user_id=:user_id, 
-            type=:type, 
-            amount=:amount, 
-            fee=:fee,
-            net_amount=:net_amount,
-            description=:description,
-            reference=:reference,
-            status=:status,
-            metadata=:metadata";
+        $query = "INSERT INTO {$this->table} 
+                  (user_id, type, amount, fee, net_amount, description, reference, status, metadata) 
+                  VALUES (:user_id, :type, :amount, :fee, :net_amount, :description, :reference, :status, :metadata) 
+                  RETURNING id";
 
         $stmt = $this->conn->prepare($query);
         
@@ -1516,7 +1775,9 @@ class TransactionModel {
         $stmt->bindValue(':status', $data['status'] ?? 'pending');
         $stmt->bindValue(':metadata', $data['metadata'] ? json_encode($data['metadata']) : null);
 
-        return $stmt->execute();
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result['id'];
     }
 
     public function updateStatusByReference($reference, $status) {
@@ -1524,9 +1785,47 @@ class TransactionModel {
         $stmt = $this->conn->prepare($query);
         return $stmt->execute([$status, $reference]);
     }
+
+    // NEW: Get transaction statistics
+    public function getTransactionStats($user_id = null, $period = 'month') {
+        $date_condition = "";
+        switch ($period) {
+            case 'day':
+                $date_condition = "AND created_at >= CURRENT_DATE";
+                break;
+            case 'week':
+                $date_condition = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
+                break;
+            case 'month':
+                $date_condition = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'";
+                break;
+            case 'year':
+                $date_condition = "AND created_at >= CURRENT_DATE - INTERVAL '365 days'";
+                break;
+        }
+
+        $user_condition = $user_id ? "AND user_id = ?" : "";
+        
+        $query = "SELECT 
+            COUNT(*) as total_transactions,
+            COALESCE(SUM(CASE WHEN type = 'deposit' THEN amount ELSE 0 END), 0) as total_deposits,
+            COALESCE(SUM(CASE WHEN type = 'withdrawal' THEN amount ELSE 0 END), 0) as total_withdrawals,
+            COALESCE(SUM(CASE WHEN type = 'investment' THEN amount ELSE 0 END), 0) as total_investments,
+            COALESCE(SUM(CASE WHEN type = 'interest' THEN amount ELSE 0 END), 0) as total_interest
+            FROM {$this->table} 
+            WHERE status = 'completed' {$date_condition} {$user_condition}";
+
+        $stmt = $this->conn->prepare($query);
+        if ($user_id) {
+            $stmt->execute([$user_id]);
+        } else {
+            $stmt->execute();
+        }
+        return $stmt->fetch();
+    }
 }
 
-// Deposit Model
+// ENHANCED DEPOSIT MODEL
 class DepositModel {
     private $conn;
     private $table = 'deposits';
@@ -1539,13 +1838,10 @@ class DepositModel {
         $this->conn->beginTransaction();
         
         try {
-            $query = "INSERT INTO {$this->table} SET 
-                user_id=:user_id, 
-                amount=:amount, 
-                payment_method=:payment_method,
-                transaction_hash=:transaction_hash,
-                proof_image=:proof_image,
-                reference=:reference";
+            $query = "INSERT INTO {$this->table} 
+                      (user_id, amount, payment_method, transaction_hash, proof_image, reference) 
+                      VALUES (:user_id, :amount, :payment_method, :transaction_hash, :proof_image, :reference) 
+                      RETURNING id";
 
             $stmt = $this->conn->prepare($query);
             
@@ -1558,11 +1854,13 @@ class DepositModel {
             $stmt->bindValue(':proof_image', $data['proof_image'] ?? '');
             $stmt->bindValue(':reference', $reference);
 
-            if (!$stmt->execute()) {
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $deposit_id = $result['id'];
+
+            if (!$deposit_id) {
                 throw new Exception('Failed to create deposit request');
             }
-
-            $deposit_id = $this->conn->lastInsertId();
 
             // Create transaction record
             $transactionModel = new TransactionModel($this->conn);
@@ -1679,14 +1977,42 @@ class DepositModel {
         return $stmt->fetch();
     }
 
+    // NEW: Get deposit statistics
+    public function getDepositStats($period = 'month') {
+        $date_condition = "";
+        switch ($period) {
+            case 'day':
+                $date_condition = "AND created_at >= CURRENT_DATE";
+                break;
+            case 'week':
+                $date_condition = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
+                break;
+            case 'month':
+                $date_condition = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'";
+                break;
+        }
+
+        $query = "SELECT 
+            COUNT(*) as total_deposits,
+            COALESCE(SUM(amount), 0) as total_amount,
+            COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_deposits,
+            COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_deposits
+            FROM {$this->table} 
+            WHERE 1=1 {$date_condition}";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt->fetch();
+    }
+
     private function createNotification($user_id, $title, $message, $type = 'info') {
-        $query = "INSERT INTO notifications SET user_id=?, title=?, message=?, type=?";
+        $query = "INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([$user_id, $title, $message, $type]);
     }
 }
 
-// Withdrawal Model
+// ENHANCED WITHDRAWAL MODEL
 class WithdrawalModel {
     private $conn;
     private $table = 'withdrawal_requests';
@@ -1699,19 +2025,10 @@ class WithdrawalModel {
         $this->conn->beginTransaction();
         
         try {
-            $query = "INSERT INTO {$this->table} SET 
-                user_id=:user_id, 
-                amount=:amount, 
-                fee=:fee,
-                net_amount=:net_amount,
-                payment_method=:payment_method,
-                bank_name=:bank_name,
-                account_number=:account_number,
-                account_name=:account_name,
-                wallet_address=:wallet_address,
-                paypal_email=:paypal_email,
-                user_notes=:user_notes,
-                reference=:reference";
+            $query = "INSERT INTO {$this->table} 
+                      (user_id, amount, fee, net_amount, payment_method, bank_name, account_number, account_name, wallet_address, paypal_email, user_notes, reference) 
+                      VALUES (:user_id, :amount, :fee, :net_amount, :payment_method, :bank_name, :account_number, :account_name, :wallet_address, :paypal_email, :user_notes, :reference) 
+                      RETURNING id";
 
             $stmt = $this->conn->prepare($query);
             
@@ -1732,11 +2049,13 @@ class WithdrawalModel {
             $stmt->bindValue(':user_notes', $data['user_notes'] ?? '');
             $stmt->bindValue(':reference', $reference);
 
-            if (!$stmt->execute()) {
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $withdrawal_id = $result['id'];
+
+            if (!$withdrawal_id) {
                 throw new Exception('Failed to create withdrawal request');
             }
-
-            $withdrawal_id = $this->conn->lastInsertId();
 
             // Deduct amount from user balance
             $userModel = new UserModel($this->conn);
@@ -1850,14 +2169,43 @@ class WithdrawalModel {
         return $stmt->fetch();
     }
 
+    // NEW: Get withdrawal statistics
+    public function getWithdrawalStats($period = 'month') {
+        $date_condition = "";
+        switch ($period) {
+            case 'day':
+                $date_condition = "AND created_at >= CURRENT_DATE";
+                break;
+            case 'week':
+                $date_condition = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'";
+                break;
+            case 'month':
+                $date_condition = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'";
+                break;
+        }
+
+        $query = "SELECT 
+            COUNT(*) as total_withdrawals,
+            COALESCE(SUM(amount), 0) as total_amount,
+            COALESCE(SUM(fee), 0) as total_fees,
+            COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_withdrawals,
+            COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_withdrawals
+            FROM {$this->table} 
+            WHERE 1=1 {$date_condition}";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt->fetch();
+    }
+
     private function createNotification($user_id, $title, $message, $type = 'info') {
-        $query = "INSERT INTO notifications SET user_id=?, title=?, message=?, type=?";
+        $query = "INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([$user_id, $title, $message, $type]);
     }
 }
 
-// KYC Model
+// ENHANCED KYC MODEL
 class KYCModel {
     private $conn;
     private $table = 'kyc_submissions';
@@ -1867,13 +2215,10 @@ class KYCModel {
     }
 
     public function create($data) {
-        $query = "INSERT INTO {$this->table} SET 
-            user_id=:user_id, 
-            document_type=:document_type, 
-            document_number=:document_number,
-            front_image=:front_image,
-            back_image=:back_image,
-            selfie_image=:selfie_image";
+        $query = "INSERT INTO {$this->table} 
+                  (user_id, document_type, document_number, front_image, back_image, selfie_image) 
+                  VALUES (:user_id, :document_type, :document_number, :front_image, :back_image, :selfie_image) 
+                  RETURNING id";
 
         $stmt = $this->conn->prepare($query);
         
@@ -1884,7 +2229,9 @@ class KYCModel {
         $stmt->bindValue(':back_image', $data['back_image'] ?? '');
         $stmt->bindValue(':selfie_image', $data['selfie_image'] ?? '');
 
-        return $stmt->execute();
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result['id'];
     }
 
     public function getByUserId($user_id) {
@@ -1948,14 +2295,28 @@ class KYCModel {
         return $stmt->fetch();
     }
 
+    // NEW: Get KYC statistics
+    public function getKYCStats() {
+        $query = "SELECT 
+            COUNT(*) as total_submissions,
+            COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_submissions,
+            COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_submissions,
+            COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_submissions
+            FROM {$this->table}";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt->fetch();
+    }
+
     private function createNotification($user_id, $title, $message, $type = 'info') {
-        $query = "INSERT INTO notifications SET user_id=?, title=?, message=?, type=?";
+        $query = "INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([$user_id, $title, $message, $type]);
     }
 }
 
-// Support Model
+// ENHANCED SUPPORT MODEL
 class SupportModel {
     private $conn;
     private $table = 'support_tickets';
@@ -1965,12 +2326,10 @@ class SupportModel {
     }
 
     public function create($data) {
-        $query = "INSERT INTO {$this->table} SET 
-            user_id=:user_id, 
-            subject=:subject, 
-            message=:message,
-            category=:category,
-            priority=:priority";
+        $query = "INSERT INTO {$this->table} 
+                  (user_id, subject, message, category, priority) 
+                  VALUES (:user_id, :subject, :message, :category, :priority) 
+                  RETURNING id";
 
         $stmt = $this->conn->prepare($query);
         
@@ -1980,7 +2339,9 @@ class SupportModel {
         $stmt->bindValue(':category', $data['category'] ?? 'general');
         $stmt->bindValue(':priority', $data['priority'] ?? 'medium');
 
-        return $stmt->execute();
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result['id'];
     }
 
     public function getUserTickets($user_id, $page = 1, $per_page = 10) {
@@ -2044,9 +2405,31 @@ class SupportModel {
         $stmt->execute([$id]);
         return $stmt->fetch();
     }
+
+    // NEW: Get support statistics
+    public function getSupportStats() {
+        $query = "SELECT 
+            COUNT(*) as total_tickets,
+            COUNT(CASE WHEN status = 'open' THEN 1 END) as open_tickets,
+            COUNT(CASE WHEN status = 'in_progress' THEN 1 END) as in_progress_tickets,
+            COUNT(CASE WHEN status = 'resolved' THEN 1 END) as resolved_tickets,
+            COUNT(CASE WHEN priority = 'high' OR priority = 'urgent' THEN 1 END) as high_priority_tickets
+            FROM {$this->table}";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt->fetch();
+    }
+
+    // NEW: Assign ticket to admin
+    public function assignTicket($ticket_id, $admin_id) {
+        $query = "UPDATE {$this->table} SET assigned_to = ?, status = 'in_progress', updated_at = NOW() WHERE id = ?";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([$admin_id, $ticket_id]);
+    }
 }
 
-// Two-Factor Authentication Model
+// ENHANCED TWO-FACTOR AUTHENTICATION MODEL
 class TwoFactorModel {
     private $conn;
     private $table = 'two_factor_auth';
@@ -2056,10 +2439,12 @@ class TwoFactorModel {
     }
 
     public function setup($user_id, $secret) {
-        $query = "INSERT INTO {$this->table} SET user_id=?, secret=?, is_active=? 
-                  ON DUPLICATE KEY UPDATE secret=?, is_active=?";
+        $query = "INSERT INTO {$this->table} (user_id, secret, is_active) 
+                  VALUES (?, ?, ?) 
+                  ON CONFLICT (user_id) 
+                  DO UPDATE SET secret = EXCLUDED.secret, is_active = EXCLUDED.is_active";
         $stmt = $this->conn->prepare($query);
-        return $stmt->execute([$user_id, $secret, false, $secret, false]);
+        return $stmt->execute([$user_id, $secret, false]);
     }
 
     public function activate($user_id) {
@@ -2104,903 +2489,223 @@ class TwoFactorModel {
         );
         return str_pad($code, 6, '0', STR_PAD_LEFT);
     }
+
+    // NEW: Generate backup codes
+    public function generateBackupCodes($user_id) {
+        $backup_codes = [];
+        for ($i = 0; $i < 10; $i++) {
+            $backup_codes[] = strtoupper(bin2hex(random_bytes(5)));
+        }
+        
+        $hashed_codes = array_map('password_hash', $backup_codes, array_fill(0, 10, PASSWORD_DEFAULT));
+        
+        $query = "UPDATE {$this->table} SET backup_codes = ? WHERE user_id = ?";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([json_encode($hashed_codes), $user_id]);
+        
+        return $backup_codes;
+    }
+
+    // NEW: Verify backup code
+    public function verifyBackupCode($user_id, $code) {
+        $record = $this->getByUserId($user_id);
+        if (!$record || empty($record['backup_codes'])) {
+            return false;
+        }
+        
+        $backup_codes = json_decode($record['backup_codes'], true);
+        foreach ($backup_codes as $index => $hashed_code) {
+            if (password_verify($code, $hashed_code)) {
+                // Remove used backup code
+                unset($backup_codes[$index]);
+                $query = "UPDATE {$this->table} SET backup_codes = ? WHERE user_id = ?";
+                $stmt = $this->conn->prepare($query);
+                $stmt->execute([json_encode(array_values($backup_codes)), $user_id]);
+                return true;
+            }
+        }
+        
+        return false;
+    }
 }
 
-// ENHANCED CONTROLLERS WITH FULL FRONTEND INTEGRATION
-
-class AuthController {
-    private $userModel;
-    private $twoFactorModel;
+// ENHANCED NOTIFICATION MODEL
+class NotificationModel {
+    private $conn;
+    private $table = 'notifications';
 
     public function __construct($db) {
-        $this->userModel = new UserModel($db);
-        $this->twoFactorModel = new TwoFactorModel($db);
+        $this->conn = $db;
     }
 
-    public function register($data) {
+    public function create($user_id, $title, $message, $type = 'info', $action_url = null) {
+        $query = "INSERT INTO {$this->table} (user_id, title, message, type, action_url) VALUES (?, ?, ?, ?, ?)";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([$user_id, $title, $message, $type, $action_url]);
+    }
+
+    public function getUserNotifications($user_id, $page = 1, $per_page = 20) {
+        $offset = ($page - 1) * $per_page;
+        $query = "SELECT * FROM {$this->table} 
+                  WHERE user_id = ? 
+                  ORDER BY created_at DESC 
+                  LIMIT ? OFFSET ?";
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindValue(1, $user_id, PDO::PARAM_INT);
+        $stmt->bindValue(2, $per_page, PDO::PARAM_INT);
+        $stmt->bindValue(3, $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    public function getUnreadCount($user_id) {
+        $query = "SELECT COUNT(*) as count FROM {$this->table} WHERE user_id = ? AND is_read = FALSE";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([$user_id]);
+        return $stmt->fetch()['count'];
+    }
+
+    public function markAsRead($notification_id, $user_id) {
+        $query = "UPDATE {$this->table} SET is_read = TRUE WHERE id = ? AND user_id = ?";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([$notification_id, $user_id]);
+    }
+
+    public function markAllAsRead($user_id) {
+        $query = "UPDATE {$this->table} SET is_read = TRUE WHERE user_id = ?";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([$user_id]);
+    }
+
+    public function delete($notification_id, $user_id) {
+        $query = "DELETE FROM {$this->table} WHERE id = ? AND user_id = ?";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([$notification_id, $user_id]);
+    }
+
+    // NEW: Bulk create notifications for multiple users
+    public function bulkCreate($user_ids, $title, $message, $type = 'info') {
+        $this->conn->beginTransaction();
         try {
-            Security::rateLimit('register_' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'), 5, 3600);
+            $query = "INSERT INTO {$this->table} (user_id, title, message, type) VALUES (?, ?, ?, ?)";
+            $stmt = $this->conn->prepare($query);
             
-            $errors = [];
-            if (empty($data['full_name'])) $errors['full_name'] = 'Full name is required';
-            if (empty($data['email'])) $errors['email'] = 'Email is required';
-            if (empty($data['phone'])) $errors['phone'] = 'Phone is required';
-            if (empty($data['password'])) $errors['password'] = 'Password is required';
+            foreach ($user_ids as $user_id) {
+                $stmt->execute([$user_id, $title, $message, $type]);
+            }
             
-            if (!empty($errors)) {
-                Response::validationError($errors);
-            }
-
-            // Validate password strength
-            try {
-                Security::validatePassword($data['password']);
-            } catch (Exception $e) {
-                Response::error($e->getMessage());
-            }
-
-            if (!Security::validateEmail($data['email'])) {
-                Response::error('Invalid email format');
-            }
-
-            if ($this->userModel->getByEmail($data['email'])) {
-                Response::error('Email already registered');
-            }
-
-            $referred_by = null;
-            if (!empty($data['referral_code'])) {
-                $referrer = $this->userModel->getByReferralCode($data['referral_code']);
-                if (!$referrer) {
-                    Response::error('Invalid referral code');
-                }
-                $referred_by = $data['referral_code'];
-            }
-
-            $user_data = [
-                'full_name' => Security::sanitizeInput($data['full_name']),
-                'email' => Security::sanitizeInput($data['email']),
-                'phone' => Security::sanitizeInput($data['phone']),
-                'password_hash' => Security::hashPassword($data['password']),
-                'referral_code' => Security::generateReferralCode(),
-                'referred_by' => $referred_by,
-                'risk_tolerance' => $data['risk_tolerance'] ?? 'medium',
-                'investment_strategy' => $data['investment_strategy'] ?? 'balanced',
-                'email_verified' => false
-            ];
-
-            $user_id = $this->userModel->create($user_data);
-            if (!$user_id) {
-                Response::error('Registration failed');
-            }
-
-            $token = Security::generateToken([
-                'user_id' => $user_id,
-                'email' => $user_data['email'],
-                'role' => 'user'
-            ]);
-
-            $user = $this->userModel->getById($user_id);
-
-            Response::success([
-                'token' => $token,
-                'user' => [
-                    'id' => $user['id'],
-                    'full_name' => $user['full_name'],
-                    'email' => $user['email'],
-                    'phone' => $user['phone'],
-                    'balance' => $user['balance'],
-                    'referral_code' => $user['referral_code'],
-                    'role' => $user['role'],
-                    'kyc_verified' => $user['kyc_verified'],
-                    'risk_tolerance' => $user['risk_tolerance'],
-                    'investment_strategy' => $user['investment_strategy'],
-                    'two_factor_enabled' => $user['two_factor_enabled']
-                ]
-            ], 'Registration successful! Welcome to Raw Wealthy!');
-
+            $this->conn->commit();
+            return true;
         } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function login($data) {
-        try {
-            Security::rateLimit('login_' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'), 5, 900);
-            
-            if (empty($data['email']) || empty($data['password'])) {
-                Response::error('Email and password required');
-            }
-
-            $user = $this->userModel->getByEmail($data['email']);
-            if (!$user || !Security::verifyPassword($data['password'], $user['password_hash'])) {
-                Response::error('Invalid email or password');
-            }
-
-            if ($user['status'] === 'suspended') {
-                Response::error('Account suspended. Please contact support.');
-            }
-
-            // Update last login
-            $this->userModel->updateLastLogin($user['id']);
-
-            // Check if 2FA is enabled
-            $twoFactorRecord = $this->twoFactorModel->getByUserId($user['id']);
-            $requires_2fa = $twoFactorRecord && $twoFactorRecord['is_active'];
-
-            if ($requires_2fa && empty($data['two_factor_code'])) {
-                $temp_token = Security::generateToken([
-                    'user_id' => $user['id'],
-                    'email' => $user['email'],
-                    'role' => $user['role'],
-                    'requires_2fa' => true,
-                    'exp' => time() + 600
-                ]);
-
-                Response::success([
-                    'requires_2fa' => true,
-                    'temp_token' => $temp_token
-                ], '2FA verification required');
-            }
-
-            if ($requires_2fa && !empty($data['two_factor_code'])) {
-                if (!$this->twoFactorModel->verifyCode($user['id'], $data['two_factor_code'])) {
-                    Response::error('Invalid 2FA code');
-                }
-            }
-
-            $token = Security::generateToken([
-                'user_id' => $user['id'],
-                'email' => $user['email'],
-                'role' => $user['role']
-            ]);
-
-            Response::success([
-                'token' => $token,
-                'user' => [
-                    'id' => $user['id'],
-                    'full_name' => $user['full_name'],
-                    'email' => $user['email'],
-                    'phone' => $user['phone'],
-                    'role' => $user['role'],
-                    'referral_code' => $user['referral_code'],
-                    'balance' => $user['balance'],
-                    'kyc_verified' => $user['kyc_verified'],
-                    'risk_tolerance' => $user['risk_tolerance'],
-                    'investment_strategy' => $user['investment_strategy'],
-                    'two_factor_enabled' => $user['two_factor_enabled']
-                ]
-            ], 'Login successful');
-
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getProfile($user_id) {
-        try {
-            $user = $this->userModel->getById($user_id);
-            if (!$user) {
-                Response::error('User not found');
-            }
-
-            $user_stats = $this->userModel->getUserStats($user_id);
-            $referral_stats = $this->userModel->getReferralStats($user_id);
-            $investment_model = new InvestmentModel($this->userModel->getConnection());
-            $active_investments = $investment_model->getActiveInvestments($user_id);
-
-            $dashboard_stats = [
-                'active_investments' => count($active_investments),
-                'active_investment_value' => array_sum(array_column($active_investments, 'amount')),
-                'total_earnings' => $user_stats['total_earnings'],
-                'total_invested' => $user_stats['total_invested'],
-                'total_referrals' => $referral_stats['total_referrals'],
-                'referral_earnings' => $referral_stats['total_referral_earnings']
-            ];
-
-            Response::success([
-                'user' => $user,
-                'dashboard_stats' => $dashboard_stats
-            ]);
-
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function updateProfile($user_id, $data, $files = []) {
-        try {
-            $update_data = [
-                'full_name' => $data['full_name'],
-                'phone' => $data['phone'],
-                'risk_tolerance' => $data['risk_tolerance'] ?? 'medium',
-                'investment_strategy' => $data['investment_strategy'] ?? 'balanced'
-            ];
-
-            if (!empty($files['avatar'])) {
-                $uploader = new FileUploader();
-                $avatar = $uploader->upload($files['avatar'], 'avatars', $user_id);
-                $update_data['avatar'] = $avatar['filename'];
-            }
-
-            $result = $this->userModel->updateProfile($user_id, $update_data);
-            if ($result) {
-                Response::success(null, 'Profile updated successfully');
-            } else {
-                Response::error('Profile update failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function changePassword($user_id, $data) {
-        try {
-            $user = $this->userModel->getById($user_id);
-            if (!Security::verifyPassword($data['current_password'], $user['password_hash'])) {
-                Response::error('Current password is incorrect');
-            }
-
-            // Validate new password strength
-            try {
-                Security::validatePassword($data['new_password']);
-            } catch (Exception $e) {
-                Response::error($e->getMessage());
-            }
-
-            $new_hash = Security::hashPassword($data['new_password']);
-            $result = $this->userModel->changePassword($user_id, $new_hash);
-            if ($result) {
-                Response::success(null, 'Password changed successfully');
-            } else {
-                Response::error('Password change failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
+            $this->conn->rollBack();
+            throw $e;
         }
     }
 }
 
-class InvestmentController {
-    private $investmentModel;
-    private $planModel;
-    private $userModel;
+// ENHANCED AUDIT LOG MODEL
+class AuditLogModel {
+    private $conn;
+    private $table = 'audit_logs';
 
     public function __construct($db) {
-        $this->investmentModel = new InvestmentModel($db);
-        $this->planModel = new InvestmentPlanModel($db);
-        $this->userModel = new UserModel($db);
+        $this->conn = $db;
     }
 
-    public function getPlans() {
-        try {
-            $plans = $this->planModel->getAll();
-            Response::success(['plans' => $plans]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
+    public function log($user_id, $action, $description, $metadata = null) {
+        $query = "INSERT INTO {$this->table} (user_id, action, description, ip_address, user_agent, metadata) 
+                  VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = $this->conn->prepare($query);
+        return $stmt->execute([
+            $user_id,
+            $action,
+            $description,
+            $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+            $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+            $metadata ? json_encode($metadata) : null
+        ]);
     }
 
-    public function createInvestment($user_id, $data, $files = []) {
-        try {
-            Security::rateLimit('investment_' . $user_id, 10, 3600);
-            
-            if (empty($data['plan_id']) || empty($data['amount'])) {
-                Response::error('Plan and amount are required');
-            }
+    public function getLogs($page = 1, $per_page = 50, $filters = []) {
+        $offset = ($page - 1) * $per_page;
+        $where = [];
+        $params = [];
 
-            $amount = Security::validateAmount($data['amount'], MIN_INVESTMENT, 10000000);
-
-            $user = $this->userModel->getById($user_id);
-            if ($user['balance'] < $amount) {
-                Response::error('Insufficient balance');
-            }
-
-            $plan = $this->planModel->getById($data['plan_id']);
-            if (!$plan) {
-                Response::error('Invalid investment plan');
-            }
-
-            if ($amount < $plan['min_amount']) {
-                Response::error('Minimum investment for this plan is ₦' . number_format($plan['min_amount'], 2));
-            }
-
-            if ($plan['max_amount'] && $amount > $plan['max_amount']) {
-                Response::error('Maximum investment for this plan is ₦' . number_format($plan['max_amount'], 2));
-            }
-
-            $proof_image = '';
-            if (!empty($files['proof_image'])) {
-                $uploader = new FileUploader();
-                $proof = $uploader->upload($files['proof_image'], 'proofs', $user_id);
-                $proof_image = $proof['filename'];
-            }
-
-            $investment_data = [
-                'user_id' => $user_id,
-                'plan_id' => $data['plan_id'],
-                'amount' => $amount,
-                'daily_interest' => $plan['daily_interest'],
-                'total_interest' => $plan['total_interest'],
-                'duration' => $plan['duration'],
-                'auto_renew' => $data['auto_renew'] ?? false,
-                'risk_level' => $plan['risk_level'],
-                'proof_image' => $proof_image,
-                'status' => 'pending'
-            ];
-
-            $investment_id = $this->investmentModel->create($investment_data);
-            if (!$investment_id) {
-                Response::error('Investment creation failed');
-            }
-
-            Response::success([
-                'investment_id' => $investment_id,
-                'investment' => [
-                    'id' => $investment_id,
-                    'plan_id' => $data['plan_id'],
-                    'amount' => $amount,
-                    'status' => 'pending',
-                    'created_at' => date('Y-m-d H:i:s')
-                ]
-            ], 'Investment created successfully and pending approval');
-
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
+        if (!empty($filters['user_id'])) {
+            $where[] = "user_id = ?";
+            $params[] = $filters['user_id'];
         }
+
+        if (!empty($filters['action'])) {
+            $where[] = "action = ?";
+            $params[] = $filters['action'];
+        }
+
+        if (!empty($filters['start_date'])) {
+            $where[] = "created_at >= ?";
+            $params[] = $filters['start_date'];
+        }
+
+        if (!empty($filters['end_date'])) {
+            $where[] = "created_at <= ?";
+            $params[] = $filters['end_date'];
+        }
+
+        $where_clause = $where ? "WHERE " . implode(" AND ", $where) : "";
+
+        $query = "SELECT a.*, u.full_name, u.email 
+                  FROM {$this->table} a
+                  LEFT JOIN users u ON a.user_id = u.id
+                  {$where_clause}
+                  ORDER BY a.created_at DESC 
+                  LIMIT ? OFFSET ?";
+        
+        $params[] = $per_page;
+        $params[] = $offset;
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
-    public function getUserInvestments($user_id, $page = 1) {
-        try {
-            $investments = $this->investmentModel->getUserInvestments($user_id, $page);
-            Response::success(['investments' => $investments]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
+    // NEW: Get audit statistics
+    public function getAuditStats($period = 'month') {
+        $date_condition = "";
+        switch ($period) {
+            case 'day':
+                $date_condition = "WHERE created_at >= CURRENT_DATE";
+                break;
+            case 'week':
+                $date_condition = "WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'";
+                break;
+            case 'month':
+                $date_condition = "WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'";
+                break;
         }
-    }
 
-    public function getActiveInvestments($user_id = null) {
-        try {
-            $investments = $this->investmentModel->getActiveInvestments($user_id);
-            Response::success(['investments' => $investments]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
+        $query = "SELECT 
+            COUNT(*) as total_logs,
+            COUNT(DISTINCT user_id) as unique_users,
+            COUNT(CASE WHEN action LIKE '%login%' THEN 1 END) as login_attempts,
+            COUNT(CASE WHEN action LIKE '%failed%' THEN 1 END) as failed_attempts
+            FROM {$this->table} {$date_condition}";
 
-    public function getPendingInvestments() {
-        try {
-            $investments = $this->investmentModel->getPendingInvestments();
-            Response::success(['investments' => $investments]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function approveInvestment($investment_id, $admin_id) {
-        try {
-            $result = $this->investmentModel->updateStatus($investment_id, 'active', $admin_id);
-            if ($result) {
-                Response::success(null, 'Investment approved successfully');
-            } else {
-                Response::error('Investment approval failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function rejectInvestment($investment_id, $admin_id) {
-        try {
-            $result = $this->investmentModel->updateStatus($investment_id, 'cancelled', $admin_id);
-            if ($result) {
-                Response::success(null, 'Investment rejected and amount refunded');
-            } else {
-                Response::error('Investment rejection failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt->fetch();
     }
 }
 
-class TransactionController {
-    private $transactionModel;
-
-    public function __construct($db) {
-        $this->transactionModel = new TransactionModel($db);
-    }
-
-    public function getUserTransactions($user_id, $page = 1) {
-        try {
-            $transactions = $this->transactionModel->getUserTransactions($user_id, $page);
-            Response::success(['transactions' => $transactions]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-}
-
-class DepositController {
-    private $depositModel;
-    private $userModel;
-
-    public function __construct($db) {
-        $this->depositModel = new DepositModel($db);
-        $this->userModel = new UserModel($db);
-    }
-
-    public function createDeposit($user_id, $data, $files = []) {
-        try {
-            Security::rateLimit('deposit_' . $user_id, 5, 3600);
-            
-            if (empty($data['amount']) || empty($data['payment_method'])) {
-                Response::error('Amount and payment method are required');
-            }
-
-            $amount = Security::validateAmount($data['amount'], MIN_DEPOSIT, 10000000);
-
-            $proof_image = '';
-            if (!empty($files['proof_image'])) {
-                $uploader = new FileUploader();
-                $proof = $uploader->upload($files['proof_image'], 'proofs', $user_id);
-                $proof_image = $proof['filename'];
-            }
-
-            $deposit_data = [
-                'user_id' => $user_id,
-                'amount' => $amount,
-                'payment_method' => $data['payment_method'],
-                'transaction_hash' => $data['transaction_hash'] ?? '',
-                'proof_image' => $proof_image
-            ];
-
-            $deposit_id = $this->depositModel->create($deposit_data);
-            if (!$deposit_id) {
-                Response::error('Deposit request failed');
-            }
-
-            Response::success([
-                'deposit_id' => $deposit_id,
-                'amount' => $amount
-            ], 'Deposit request submitted successfully');
-
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getUserDeposits($user_id, $page = 1) {
-        try {
-            $deposits = $this->depositModel->getUserDeposits($user_id, $page);
-            Response::success(['deposits' => $deposits]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getPendingDeposits() {
-        try {
-            $deposits = $this->depositModel->getPendingDeposits();
-            Response::success(['deposits' => $deposits]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function approveDeposit($deposit_id, $admin_id) {
-        try {
-            $result = $this->depositModel->updateStatus($deposit_id, 'approved', $admin_id);
-            if ($result) {
-                Response::success(null, 'Deposit approved successfully');
-            } else {
-                Response::error('Deposit approval failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function rejectDeposit($deposit_id, $admin_id, $data) {
-        try {
-            $admin_notes = $data['admin_notes'] ?? '';
-            $result = $this->depositModel->updateStatus($deposit_id, 'rejected', $admin_id, $admin_notes);
-            if ($result) {
-                Response::success(null, 'Deposit rejected successfully');
-            } else {
-                Response::error('Deposit rejection failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-}
-
-class WithdrawalController {
-    private $withdrawalModel;
-    private $userModel;
-
-    public function __construct($db) {
-        $this->withdrawalModel = new WithdrawalModel($db);
-        $this->userModel = new UserModel($db);
-    }
-
-    public function createWithdrawal($user_id, $data) {
-        try {
-            Security::rateLimit('withdrawal_' . $user_id, 5, 3600);
-            
-            if (empty($data['amount']) || empty($data['payment_method'])) {
-                Response::error('Amount and payment method are required');
-            }
-
-            $amount = Security::validateAmount($data['amount'], MIN_WITHDRAWAL, MAX_WITHDRAWAL);
-
-            $user = $this->userModel->getById($user_id);
-            if ($user['balance'] < $amount) {
-                Response::error('Insufficient balance');
-            }
-
-            $withdrawal_data = [
-                'user_id' => $user_id,
-                'amount' => $amount,
-                'payment_method' => $data['payment_method'],
-                'bank_name' => $data['bank_name'] ?? '',
-                'account_number' => $data['account_number'] ?? '',
-                'account_name' => $data['account_name'] ?? '',
-                'wallet_address' => $data['wallet_address'] ?? '',
-                'paypal_email' => $data['paypal_email'] ?? '',
-                'user_notes' => $data['user_notes'] ?? ''
-            ];
-
-            $withdrawal_id = $this->withdrawalModel->create($withdrawal_data);
-            if (!$withdrawal_id) {
-                Response::error('Withdrawal request failed');
-            }
-
-            Response::success([
-                'withdrawal_id' => $withdrawal_id,
-                'amount' => $amount,
-                'fee' => $amount * WITHDRAWAL_FEE_RATE,
-                'net_amount' => $amount * (1 - WITHDRAWAL_FEE_RATE)
-            ], 'Withdrawal request submitted successfully');
-
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getUserWithdrawals($user_id, $page = 1) {
-        try {
-            $withdrawals = $this->withdrawalModel->getUserWithdrawals($user_id, $page);
-            Response::success(['withdrawals' => $withdrawals]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getPendingWithdrawals() {
-        try {
-            $withdrawals = $this->withdrawalModel->getPendingWithdrawals();
-            Response::success(['withdrawals' => $withdrawals]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function approveWithdrawal($withdrawal_id, $admin_id) {
-        try {
-            $result = $this->withdrawalModel->updateStatus($withdrawal_id, 'approved', $admin_id);
-            if ($result) {
-                Response::success(null, 'Withdrawal approved successfully');
-            } else {
-                Response::error('Withdrawal approval failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function rejectWithdrawal($withdrawal_id, $admin_id, $data) {
-        try {
-            $admin_notes = $data['admin_notes'] ?? '';
-            $result = $this->withdrawalModel->updateStatus($withdrawal_id, 'rejected', $admin_id, $admin_notes);
-            if ($result) {
-                Response::success(null, 'Withdrawal rejected successfully');
-            } else {
-                Response::error('Withdrawal rejection failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-}
-
-class ReferralController {
-    private $userModel;
-
-    public function __construct($db) {
-        $this->userModel = new UserModel($db);
-    }
-
-    public function getReferralStats($user_id) {
-        try {
-            $stats = $this->userModel->getReferralStats($user_id);
-            $user = $this->userModel->getById($user_id);
-            
-            $referral_link = BASE_URL . "?ref=" . $user['referral_code'];
-            
-            Response::success([
-                'stats' => $stats,
-                'referral_link' => $referral_link,
-                'referral_code' => $user['referral_code']
-            ]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-}
-
-class KYCController {
-    private $kycModel;
-    private $userModel;
-
-    public function __construct($db) {
-        $this->kycModel = new KYCModel($db);
-        $this->userModel = new UserModel($db);
-    }
-
-    public function submitKYC($user_id, $data, $files = []) {
-        try {
-            if (empty($data['document_type']) || empty($data['document_number'])) {
-                Response::error('Document type and number are required');
-            }
-
-            if (empty($files['front_image'])) {
-                Response::error('Front image of document is required');
-            }
-
-            $uploader = new FileUploader();
-            
-            // Upload front image
-            $front_image = $uploader->upload($files['front_image'], 'kyc', $user_id);
-            
-            // Upload back image if provided
-            $back_image = '';
-            if (!empty($files['back_image'])) {
-                $back_image_data = $uploader->upload($files['back_image'], 'kyc', $user_id);
-                $back_image = $back_image_data['filename'];
-            }
-
-            // Upload selfie if provided
-            $selfie_image = '';
-            if (!empty($files['selfie_image'])) {
-                $selfie_image_data = $uploader->upload($files['selfie_image'], 'kyc', $user_id);
-                $selfie_image = $selfie_image_data['filename'];
-            }
-
-            $kyc_data = [
-                'user_id' => $user_id,
-                'document_type' => $data['document_type'],
-                'document_number' => $data['document_number'],
-                'front_image' => $front_image['filename'],
-                'back_image' => $back_image,
-                'selfie_image' => $selfie_image
-            ];
-
-            $result = $this->kycModel->create($kyc_data);
-            if ($result) {
-                Response::success(null, 'KYC application submitted successfully');
-            } else {
-                Response::error('KYC submission failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getKYCStatus($user_id) {
-        try {
-            $submission = $this->kycModel->getByUserId($user_id);
-            Response::success(['submission' => $submission]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getPendingSubmissions() {
-        try {
-            $submissions = $this->kycModel->getPendingSubmissions();
-            Response::success(['submissions' => $submissions]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function approveKYC($submission_id, $admin_id) {
-        try {
-            $result = $this->kycModel->updateStatus($submission_id, 'approved', $admin_id);
-            if ($result) {
-                Response::success(null, 'KYC approved successfully');
-            } else {
-                Response::error('KYC approval failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function rejectKYC($submission_id, $admin_id, $data) {
-        try {
-            $admin_notes = $data['admin_notes'] ?? '';
-            $result = $this->kycModel->updateStatus($submission_id, 'rejected', $admin_id, $admin_notes);
-            if ($result) {
-                Response::success(null, 'KYC rejected successfully');
-            } else {
-                Response::error('KYC rejection failed');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-}
-
-class SupportController {
-    private $supportModel;
-
-    public function __construct($db) {
-        $this->supportModel = new SupportModel($db);
-    }
-
-    public function createTicket($user_id, $data) {
-        try {
-            if (empty($data['subject']) || empty($data['message'])) {
-                Response::error('Subject and message are required');
-            }
-
-            $ticket_data = [
-                'user_id' => $user_id,
-                'subject' => $data['subject'],
-                'message' => $data['message'],
-                'category' => $data['category'] ?? 'general',
-                'priority' => $data['priority'] ?? 'medium'
-            ];
-
-            $result = $this->supportModel->create($ticket_data);
-            if ($result) {
-                Response::success(null, 'Support ticket created successfully');
-            } else {
-                Response::error('Failed to create support ticket');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getUserTickets($user_id, $page = 1) {
-        try {
-            $tickets = $this->supportModel->getUserTickets($user_id, $page);
-            Response::success(['tickets' => $tickets]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getAllTickets($page = 1, $filters = []) {
-        try {
-            $tickets = $this->supportModel->getAllTickets($page, 20, $filters);
-            Response::success(['tickets' => $tickets]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function updateTicketStatus($ticket_id, $data) {
-        try {
-            $status = $data['status'];
-            $admin_notes = $data['admin_notes'] ?? '';
-            
-            $result = $this->supportModel->updateStatus($ticket_id, $status, $admin_notes);
-            if ($result) {
-                Response::success(null, 'Ticket status updated successfully');
-            } else {
-                Response::error('Failed to update ticket status');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function getTicket($ticket_id) {
-        try {
-            $ticket = $this->supportModel->getById($ticket_id);
-            if (!$ticket) {
-                Response::error('Ticket not found');
-            }
-            Response::success(['ticket' => $ticket]);
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-}
-
-class TwoFactorController {
-    private $twoFactorModel;
-    private $userModel;
-
-    public function __construct($db) {
-        $this->twoFactorModel = new TwoFactorModel($db);
-        $this->userModel = new UserModel($db);
-    }
-
-    public function setup2FA($user_id) {
-        try {
-            $secret = Security::generate2FASecret();
-            $result = $this->twoFactorModel->setup($user_id, $secret);
-            
-            if ($result) {
-                Response::success([
-                    'secret' => $secret,
-                    'qr_code_url' => $this->generateQRCodeUrl($secret)
-                ], '2FA setup initiated');
-            } else {
-                Response::error('Failed to setup 2FA');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function verify2FA($user_id, $data) {
-        try {
-            if (empty($data['code'])) {
-                Response::error('2FA code is required');
-            }
-
-            $verified = $this->twoFactorModel->verifyCode($user_id, $data['code']);
-            if ($verified) {
-                $this->twoFactorModel->activate($user_id);
-                $this->userModel->enable2FA($user_id, $this->twoFactorModel->getByUserId($user_id)['secret']);
-                
-                Response::success(null, '2FA activated successfully');
-            } else {
-                Response::error('Invalid 2FA code');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    public function disable2FA($user_id, $data) {
-        try {
-            if (empty($data['code'])) {
-                Response::error('2FA code is required');
-            }
-
-            $verified = $this->twoFactorModel->verifyCode($user_id, $data['code']);
-            if ($verified) {
-                $this->twoFactorModel->deactivate($user_id);
-                $this->userModel->disable2FA($user_id);
-                
-                Response::success(null, '2FA disabled successfully');
-            } else {
-                Response::error('Invalid 2FA code');
-            }
-        } catch (Exception $e) {
-            Response::error($e->getMessage());
-        }
-    }
-
-    private function generateQRCodeUrl($secret) {
-        $issuer = 'Raw Wealthy';
-        $account = 'User Account';
-        return "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" . urlencode("otpauth://totp/{$issuer}:{$account}?secret={$secret}&issuer={$issuer}");
-    }
-}
-
+// ENHANCED ADMIN CONTROLLER
 class AdminController {
     private $userModel;
     private $investmentModel;
     private $depositModel;
     private $withdrawalModel;
     private $transactionModel;
+    private $kycModel;
+    private $supportModel;
+    private $auditLogModel;
 
     public function __construct($db) {
         $this->userModel = new UserModel($db);
@@ -3008,6 +2713,9 @@ class AdminController {
         $this->depositModel = new DepositModel($db);
         $this->withdrawalModel = new WithdrawalModel($db);
         $this->transactionModel = new TransactionModel($db);
+        $this->kycModel = new KYCModel($db);
+        $this->supportModel = new SupportModel($db);
+        $this->auditLogModel = new AuditLogModel($db);
     }
 
     public function getDashboardStats() {
@@ -3044,6 +2752,13 @@ class AdminController {
             $stmt = $conn->query("SELECT COALESCE(SUM(fee), 0) as platform_earnings FROM transactions WHERE type = 'withdrawal' AND status = 'completed'");
             $platform_earnings = $stmt->fetch()['platform_earnings'];
 
+            // NEW: Recent activities
+            $stmt = $conn->query("SELECT COUNT(*) as new_users_today FROM users WHERE created_at >= CURRENT_DATE");
+            $new_users_today = $stmt->fetch()['new_users_today'];
+
+            $stmt = $conn->query("SELECT COALESCE(SUM(amount), 0) as today_deposits FROM deposits WHERE created_at >= CURRENT_DATE AND status = 'approved'");
+            $today_deposits = $stmt->fetch()['today_deposits'];
+
             Response::success([
                 'total_users' => $total_users,
                 'total_investments' => $investment_stats['total_investments'],
@@ -3055,7 +2770,9 @@ class AdminController {
                 'pending_investments' => $pending_investments,
                 'pending_deposits' => $pending_deposits,
                 'pending_withdrawals' => $pending_withdrawals,
-                'platform_earnings' => $platform_earnings
+                'platform_earnings' => $platform_earnings,
+                'new_users_today' => $new_users_today,
+                'today_deposits' => $today_deposits
             ]);
 
         } catch (Exception $e) {
@@ -3068,12 +2785,7 @@ class AdminController {
             $users = $this->userModel->getAllUsers($page, 20, $filters);
             $total = $this->userModel->getTotalUsersCount($filters);
             
-            Response::success([
-                'users' => $users,
-                'total' => $total,
-                'page' => $page,
-                'per_page' => 20
-            ]);
+            Response::paginated($users, $total, $page, 20, 'Users retrieved successfully');
         } catch (Exception $e) {
             Response::error($e->getMessage());
         }
@@ -3089,8 +2801,87 @@ class AdminController {
             Response::error($e->getMessage());
         }
     }
+
+    // NEW: Get financial reports
+    public function getFinancialReport($period = 'month') {
+        try {
+            $deposit_stats = $this->depositModel->getDepositStats($period);
+            $withdrawal_stats = $this->withdrawalModel->getWithdrawalStats($period);
+            $transaction_stats = $this->transactionModel->getTransactionStats(null, $period);
+            
+            Response::success([
+                'deposits' => $deposit_stats,
+                'withdrawals' => $withdrawal_stats,
+                'transactions' => $transaction_stats,
+                'period' => $period
+            ], 'Financial report generated successfully');
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    // NEW: Get system statistics
+    public function getSystemStats() {
+        try {
+            $kyc_stats = $this->kycModel->getKYCStats();
+            $support_stats = $this->supportModel->getSupportStats();
+            $audit_stats = $this->auditLogModel->getAuditStats('month');
+            $investment_stats = $this->investmentModel->getInvestmentStats();
+            
+            Response::success([
+                'kyc' => $kyc_stats,
+                'support' => $support_stats,
+                'audit' => $audit_stats,
+                'investments' => $investment_stats
+            ], 'System statistics retrieved successfully');
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    // NEW: Update user status
+    public function updateUserStatus($user_id, $status) {
+        try {
+            $query = "UPDATE users SET status = ? WHERE id = ?";
+            $stmt = $this->userModel->getConnection()->prepare($query);
+            $result = $stmt->execute([$status, $user_id]);
+            
+            if ($result) {
+                $this->auditLogModel->log($user_id, 'user_status_update', "User status changed to $status");
+                Response::success(null, 'User status updated successfully');
+            } else {
+                Response::error('Failed to update user status');
+            }
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    // NEW: Bulk operations
+    public function bulkApproveDeposits($deposit_ids) {
+        try {
+            $this->userModel->getConnection()->beginTransaction();
+            $success_count = 0;
+            
+            foreach ($deposit_ids as $deposit_id) {
+                try {
+                    $this->depositModel->updateStatus($deposit_id, 'approved', $_SESSION['admin_id'] ?? 1);
+                    $success_count++;
+                } catch (Exception $e) {
+                    error_log("Failed to approve deposit $deposit_id: " . $e->getMessage());
+                }
+            }
+            
+            $this->userModel->getConnection()->commit();
+            Response::success(['approved_count' => $success_count], "Successfully approved $success_count deposits");
+        } catch (Exception $e) {
+            $this->userModel->getConnection()->rollBack();
+            Response::error($e->getMessage());
+        }
+    }
 }
 
+// ENHANCED APPLICATION CLASS WITH ROUTING
 class Application {
     private $db;
     private $authController;
@@ -3103,6 +2894,8 @@ class Application {
     private $supportController;
     private $twoFactorController;
     private $adminController;
+    private $notificationController;
+    private $auditLogController;
 
     public function __construct() {
         $database = new Database();
@@ -3118,6 +2911,8 @@ class Application {
         $this->supportController = new SupportController($this->db);
         $this->twoFactorController = new TwoFactorController($this->db);
         $this->adminController = new AdminController($this->db);
+        $this->notificationController = new NotificationController($this->db);
+        $this->auditLogController = new AuditLogController($this->db);
     }
 
     public function handleRequest() {
@@ -3128,6 +2923,9 @@ class Application {
         $path = str_replace('/index.php', '', $path);
         
         try {
+            Security::checkIPBlock();
+            Security::validateSession();
+            
             $input = $this->getInputData();
             $files = $_FILES;
 
@@ -3139,6 +2937,12 @@ class Application {
                 if (!Security::verifyCSRFToken($csrf_token)) {
                     Response::error('Invalid CSRF token', 403);
                 }
+            }
+
+            // Rate limiting for sensitive endpoints
+            $client_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+            if (in_array($path, ['/api/login', '/api/register', '/api/password-reset'])) {
+                Security::rateLimit($client_ip . '_' . $path, 5, 300);
             }
 
             switch ($path) {
@@ -3234,6 +3038,18 @@ class Application {
                     if ($method === 'POST') $this->twoFactorController->disable2FA($user['user_id'], $input);
                     break;
 
+                // Notification endpoints
+                case '/api/notifications':
+                    $user = $this->authenticate();
+                    if ($method === 'GET') $this->notificationController->getUserNotifications($user['user_id'], $_GET['page'] ?? 1);
+                    elseif ($method === 'PUT') $this->notificationController->markAllAsRead($user['user_id']);
+                    break;
+
+                case '/api/notifications/read':
+                    $user = $this->authenticate();
+                    if ($method === 'PUT') $this->notificationController->markAsRead($input['notification_id'], $user['user_id']);
+                    break;
+
                 // Admin endpoints
                 case '/api/admin/dashboard':
                     $user = $this->authenticateAdmin();
@@ -3320,6 +3136,16 @@ class Application {
                     if ($method === 'POST') $this->adminController->calculateDailyInterest();
                     break;
 
+                case '/api/admin/financial-report':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'GET') $this->adminController->getFinancialReport($_GET['period'] ?? 'month');
+                    break;
+
+                case '/api/admin/system-stats':
+                    $user = $this->authenticateAdmin();
+                    if ($method === 'GET') $this->adminController->getSystemStats();
+                    break;
+
                 // CSRF token endpoint
                 case '/api/csrf-token':
                     if ($method === 'GET') Response::csrfToken();
@@ -3331,7 +3157,8 @@ class Application {
                         'status' => 'healthy', 
                         'version' => APP_VERSION,
                         'timestamp' => time(),
-                        'environment' => 'production'
+                        'environment' => 'production',
+                        'database' => 'connected'
                     ]);
                     break;
 
@@ -3355,11 +3182,11 @@ class Application {
         
         if (strpos($content_type, 'application/json') !== false) {
             $input = json_decode(file_get_contents('php://input'), true) ?? [];
-            return $input;
+            return Security::preventXSS($input);
         } elseif (strpos($content_type, 'multipart/form-data') !== false) {
-            return $_POST;
+            return Security::preventXSS($_POST);
         } else {
-            return $_POST;
+            return Security::preventXSS($_POST);
         }
     }
 
@@ -3376,6 +3203,18 @@ class Application {
         
         if (!$user) {
             Response::error('Invalid or expired token', 401);
+        }
+
+        // Verify user still exists and is active
+        $userModel = new UserModel($this->db);
+        $user_data = $userModel->getById($user['user_id']);
+        
+        if (!$user_data) {
+            Response::error('User account not found', 401);
+        }
+
+        if ($user_data['status'] !== 'active') {
+            Response::error('Account is suspended', 403);
         }
 
         return $user;
@@ -3406,6 +3245,178 @@ class Application {
         }
 
         Response::file($file_path, $filename);
+    }
+}
+
+// NEW: NOTIFICATION CONTROLLER
+class NotificationController {
+    private $notificationModel;
+
+    public function __construct($db) {
+        $this->notificationModel = new NotificationModel($db);
+    }
+
+    public function getUserNotifications($user_id, $page = 1) {
+        try {
+            $notifications = $this->notificationModel->getUserNotifications($user_id, $page);
+            $unread_count = $this->notificationModel->getUnreadCount($user_id);
+            
+            Response::success([
+                'notifications' => $notifications,
+                'unread_count' => $unread_count
+            ]);
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function markAsRead($notification_id, $user_id) {
+        try {
+            $result = $this->notificationModel->markAsRead($notification_id, $user_id);
+            if ($result) {
+                Response::success(null, 'Notification marked as read');
+            } else {
+                Response::error('Failed to mark notification as read');
+            }
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function markAllAsRead($user_id) {
+        try {
+            $result = $this->notificationModel->markAllAsRead($user_id);
+            if ($result) {
+                Response::success(null, 'All notifications marked as read');
+            } else {
+                Response::error('Failed to mark notifications as read');
+            }
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function delete($notification_id, $user_id) {
+        try {
+            $result = $this->notificationModel->delete($notification_id, $user_id);
+            if ($result) {
+                Response::success(null, 'Notification deleted');
+            } else {
+                Response::error('Failed to delete notification');
+            }
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+}
+
+// NEW: AUDIT LOG CONTROLLER
+class AuditLogController {
+    private $auditLogModel;
+
+    public function __construct($db) {
+        $this->auditLogModel = new AuditLogModel($db);
+    }
+
+    public function getLogs($page = 1, $filters = []) {
+        try {
+            $logs = $this->auditLogModel->getLogs($page, 50, $filters);
+            Response::success(['logs' => $logs]);
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function getStats() {
+        try {
+            $stats = $this->auditLogModel->getAuditStats();
+            Response::success(['stats' => $stats]);
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+}
+
+// NEW: TWO FACTOR CONTROLLER
+class TwoFactorController {
+    private $twoFactorModel;
+    private $userModel;
+
+    public function __construct($db) {
+        $this->twoFactorModel = new TwoFactorModel($db);
+        $this->userModel = new UserModel($db);
+    }
+
+    public function setup2FA($user_id) {
+        try {
+            $secret = Security::generate2FASecret();
+            $result = $this->twoFactorModel->setup($user_id, $secret);
+            
+            if ($result) {
+                Response::success([
+                    'secret' => $secret,
+                    'qr_code_url' => $this->generateQRCodeUrl($secret)
+                ], '2FA setup initiated');
+            } else {
+                Response::error('Failed to setup 2FA');
+            }
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function verify2FA($user_id, $data) {
+        try {
+            if (empty($data['code'])) {
+                Response::error('2FA code is required');
+            }
+
+            $verified = $this->twoFactorModel->verifyCode($user_id, $data['code']);
+            if ($verified) {
+                $this->twoFactorModel->activate($user_id);
+                $this->userModel->enable2FA($user_id, $this->twoFactorModel->getByUserId($user_id)['secret']);
+                
+                // Generate backup codes
+                $backup_codes = $this->twoFactorModel->generateBackupCodes($user_id);
+                
+                Response::success([
+                    'backup_codes' => $backup_codes
+                ], '2FA activated successfully');
+            } else {
+                Response::error('Invalid 2FA code');
+            }
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    public function disable2FA($user_id, $data) {
+        try {
+            if (empty($data['code'])) {
+                Response::error('2FA code is required');
+            }
+
+            // Allow backup codes for disabling
+            $verified = $this->twoFactorModel->verifyCode($user_id, $data['code']) || 
+                       $this->twoFactorModel->verifyBackupCode($user_id, $data['code']);
+
+            if ($verified) {
+                $this->twoFactorModel->deactivate($user_id);
+                $this->userModel->disable2FA($user_id);
+                
+                Response::success(null, '2FA disabled successfully');
+            } else {
+                Response::error('Invalid 2FA code or backup code');
+            }
+        } catch (Exception $e) {
+            Response::error($e->getMessage());
+        }
+    }
+
+    private function generateQRCodeUrl($secret) {
+        $issuer = 'Raw Wealthy';
+        $account = 'User Account';
+        return "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" . urlencode("otpauth://totp/{$issuer}:{$account}?secret={$secret}&issuer={$issuer}");
     }
 }
 

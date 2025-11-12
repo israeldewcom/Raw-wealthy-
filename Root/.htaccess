@@ -1,0 +1,27 @@
+RewriteEngine On
+RewriteBase /
+
+# Handle API routes
+RewriteRule ^api/health$ index.php [QSA,L]
+RewriteRule ^api/register$ index.php [QSA,L]
+RewriteRule ^api/login$ index.php [QSA,L]
+RewriteRule ^api/investment-plans$ index.php [QSA,L]
+RewriteRule ^api/csrf-token$ index.php [QSA,L]
+RewriteRule ^api/profile$ index.php [QSA,L]
+RewriteRule ^api/investments$ index.php [QSA,L]
+RewriteRule ^api/deposits$ index.php [QSA,L]
+RewriteRule ^api/withdrawals$ index.php [QSA,L]
+RewriteRule ^api/kyc$ index.php [QSA,L]
+RewriteRule ^api/support$ index.php [QSA,L]
+RewriteRule ^api/2fa/(.*)$ index.php [QSA,L]
+RewriteRule ^api/admin/(.*)$ index.php [QSA,L]
+RewriteRule ^api/files/(.*)$ index.php [QSA,L]
+
+# Catch-all for other API routes
+RewriteCond %{REQUEST_URI} ^/api/
+RewriteRule ^api/(.*)$ index.php [QSA,L]
+
+# Handle frontend routing (if needed)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]

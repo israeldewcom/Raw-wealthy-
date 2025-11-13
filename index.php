@@ -65,8 +65,8 @@ define('PREDICTION_THRESHOLD', 0.75);
 define('MARKET_ANALYSIS_INTERVAL', 300); // 5 minutes
 define('PORTFOLIO_OPTIMIZATION_ENABLED', true);
 
-// Database Configuration with Production Optimizations - UPDATED WITH YOUR CREDENTIALS
-define('DB_HOST', getenv('DB_HOST') ?: 'dpg-d4a8v7hr0fns73fgb440-a');
+// Database Configuration with Production Optimizations - UPDATED WITH CORRECT RENDER.COM HOSTNAME
+define('DB_HOST', getenv('DB_HOST') ?: 'dpg-d4a8v7hr0fns73fgb440-a.oregon-postgres.render.com');
 define('DB_NAME', getenv('DB_NAME') ?: 'raw_wealthy');
 define('DB_USER', getenv('DB_USER') ?: 'raw_wealthy_user');
 define('DB_PASS', getenv('DB_PASS') ?: 'N0fVHwK7Cexa8zms6Ua1tD1XVXbfdZxh');
@@ -177,7 +177,7 @@ function handleShutdown() {
 }
 
 // =============================================================================
-// ADVANCED DATABASE CLASS WITH PRODUCTION FEATURES
+// ADVANCED DATABASE CLASS WITH PRODUCTION FEATURES - UPDATED FOR RENDER.COM
 // =============================================================================
 
 class Database {
@@ -243,15 +243,21 @@ class Database {
     private function createConnection($retry_count = 0) {
         try {
             $dsn = "pgsql:host={$this->host};port={$this->port};dbname={$this->db_name}";
+            
+            // Add SSL mode for Render.com PostgreSQL
+            if (strpos($this->host, 'render.com') !== false) {
+                $dsn .= ";sslmode=require";
+            }
+            
             $this->conn = new PDO($dsn, $this->username, $this->password, $this->options);
             
             $this->conn->query("SELECT 1");
             
-            error_log("PostgreSQL Connected Successfully - Connection Pool: " . count(array_filter($this->pool)));
+            error_log("✅ PostgreSQL Connected Successfully - Connection Pool: " . count(array_filter($this->pool)));
             return $this->conn;
             
         } catch(PDOException $e) {
-            error_log("PostgreSQL connection error (Attempt " . ($retry_count + 1) . "): " . $e->getMessage());
+            error_log("❌ PostgreSQL connection error (Attempt " . ($retry_count + 1) . "): " . $e->getMessage());
             
             if ($retry_count < DB_RETRY_ATTEMPTS) {
                 sleep(1);
@@ -270,11 +276,19 @@ class Database {
     private function createDatabase() {
         try {
             $temp_dsn = "pgsql:host={$this->host};port={$this->port};dbname=postgres";
+            if (strpos($this->host, 'render.com') !== false) {
+                $temp_dsn .= ";sslmode=require";
+            }
+            
             $temp_conn = new PDO($temp_dsn, $this->username, $this->password);
             $temp_conn->exec("CREATE DATABASE {$this->db_name}");
             $temp_conn = null;
             
             $dsn = "pgsql:host={$this->host};port={$this->port};dbname={$this->db_name}";
+            if (strpos($this->host, 'render.com') !== false) {
+                $dsn .= ";sslmode=require";
+            }
+            
             $this->conn = new PDO($dsn, $this->username, $this->password, $this->options);
             
             $this->initializeDatabase();
@@ -669,10 +683,10 @@ class Database {
             // Seed default data with enhanced plans
             $this->seedDefaultData();
 
-            error_log("PostgreSQL Database initialized successfully with AI enhancements and withdrawal limits");
+            error_log("✅ PostgreSQL Database initialized successfully with AI enhancements and withdrawal limits");
 
         } catch (Exception $e) {
-            error_log("Database initialization error: " . $e->getMessage());
+            error_log("❌ Database initialization error: " . $e->getMessage());
             throw new Exception("Database setup failed: " . $e->getMessage());
         }
     }
@@ -839,10 +853,10 @@ class Database {
                     $setting_stmt->execute($setting);
                 }
 
-                error_log("Default data seeded successfully with updated withdrawal limits and account linking");
+                error_log("✅ Default data seeded successfully with updated withdrawal limits and account linking");
             }
         } catch (Exception $e) {
-            error_log("Default data seeding error: " . $e->getMessage());
+            error_log("❌ Default data seeding error: " . $e->getMessage());
         }
     }
 
@@ -3818,7 +3832,7 @@ class AIController {
 }
 
 // =============================================================================
-// ENHANCED APPLICATION CLASS WITH COMPLETE ROUTING
+// ENHANCED APPLICATION CLASS WITH COMPLETE ROUTING AND DEBUG ENDPOINTS
 // =============================================================================
 
 class Application {
@@ -3841,7 +3855,7 @@ class Application {
             
         } catch (Exception $e) {
             error_log("Application initialization failed: " . $e->getMessage());
-            throw new Exception("Application startup failed: " . $e->getMessage());
+            // Don't throw error here - let the app start without DB for now
         }
     }
 
@@ -3950,14 +3964,14 @@ class Application {
                 if ($method === 'GET') $this->aiController->getPortfolioOptimization($user['user_id']);
                 break;
 
-            // Health check
+            // Health check and debug endpoints
             case '/api/health':
                 if ($method === 'GET') Response::success([
                     'status' => 'healthy', 
                     'version' => APP_VERSION,
                     'timestamp' => time(),
                     'environment' => 'production',
-                    'database' => 'connected',
+                    'database' => $this->db ? 'connected' : 'disconnected',
                     'ai_enabled' => AI_RECOMMENDATION_ENABLED,
                     'withdrawal_limits' => [
                         'min_withdrawal' => MIN_WITHDRAWAL,
@@ -3967,6 +3981,10 @@ class Application {
                         'referral_bonus_percent' => REFERRAL_BONUS_RATE * 100
                     ]
                 ]);
+                break;
+
+            case '/api/debug-db':
+                if ($method === 'GET') $this->debugDatabase();
                 break;
 
             // CSRF token endpoint
@@ -3983,6 +4001,53 @@ class Application {
                 
                 Response::error('Endpoint not found: ' . $path, 404);
         }
+    }
+
+    private function debugDatabase() {
+        header('Content-Type: text/plain');
+        echo "=== DATABASE CONNECTION DEBUG ===\n\n";
+        
+        echo "DB_HOST: " . DB_HOST . "\n";
+        echo "DB_NAME: " . DB_NAME . "\n"; 
+        echo "DB_USER: " . DB_USER . "\n";
+        echo "DB_PORT: " . DB_PORT . "\n";
+        echo "DB_PASS: " . (DB_PASS ? "***SET***" : "NOT SET") . "\n\n";
+        
+        try {
+            $test_dsn = "pgsql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME;
+            
+            // Add SSL mode for Render.com
+            if (strpos(DB_HOST, 'render.com') !== false) {
+                $test_dsn .= ";sslmode=require";
+            }
+            
+            echo "DSN: " . $test_dsn . "\n";
+            
+            $test_pdo = new PDO($test_dsn, DB_USER, DB_PASS, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_TIMEOUT => 10
+            ]);
+            
+            echo "✅ DATABASE CONNECTION SUCCESSFUL!\n";
+            
+            $stmt = $test_pdo->query("SELECT version() as pg_version");
+            $result = $stmt->fetch();
+            echo "PostgreSQL Version: " . $result['pg_version'] . "\n";
+            
+            // Test if tables exist
+            $tables = $test_pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")->fetchAll();
+            echo "\nTables found: " . count($tables) . "\n";
+            foreach ($tables as $table) {
+                echo "- " . $table['table_name'] . "\n";
+            }
+            
+        } catch (PDOException $e) {
+            echo "❌ DATABASE CONNECTION FAILED:\n";
+            echo "Error: " . $e->getMessage() . "\n";
+            echo "Error Code: " . $e->getCode() . "\n";
+        }
+        
+        exit;
     }
 
     private function getInputData() {
@@ -4048,7 +4113,7 @@ class Application {
 }
 
 // =============================================================================
-// APPLICATION BOOTSTRAP
+// APPLICATION BOOTSTRAP WITH ENHANCED ERROR HANDLING
 // =============================================================================
 
 try {

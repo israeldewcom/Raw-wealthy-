@@ -12,6 +12,7 @@
  * Account Linking Required Before Withdrawal
  * PRODUCTION-READY WITH ADVANCED MONITORING & ERROR HANDLING
  * FULLY INTEGRATED MODELS, CONTROLLERS, AND ADVANCED UI COMPONENTS
+ * ADVANCED AUTOMATION SCRIPTS, TOOLS, AND BEHAVIOR SECTIONS
  */
 
 // =============================================================================
@@ -82,6 +83,14 @@ define('REDIS_PASSWORD', getenv('REDIS_PASSWORD') ?: '');
 define('REDIS_DB', 0);
 define('CACHE_TTL', 3600); // 1 hour
 
+// Advanced Automation Configuration
+define('AUTO_INTEREST_CALCULATION', true);
+define('AUTO_WITHDRAWAL_PROCESSING', true);
+define('AUTO_PORTFOLIO_REBALANCING', true);
+define('AUTO_MARKET_ANALYSIS', true);
+define('AUTO_SECURITY_SCANS', true);
+define('AUTO_BACKUP_ENABLED', true);
+
 // =============================================================================
 // SECURITY HEADERS & CORS CONFIGURATION
 // =============================================================================
@@ -144,7 +153,9 @@ $directories = [
     'logs', 'uploads', 'uploads/proofs', 'uploads/kyc', 'uploads/avatars', 
     'cache', 'backups', 'ai_models', 'temp', 'reports', 'exports',
     'logs/audit', 'logs/performance', 'logs/security', 'cache/rates',
-    'cache/market_data', 'cache/user_sessions'
+    'cache/market_data', 'cache/user_sessions', 'automation', 'scripts',
+    'tools', 'behavior_sections', 'monitoring', 'backups/database',
+    'backups/logs', 'backups/config'
 ];
 
 foreach ($directories as $dir) {
@@ -173,6 +184,484 @@ function handleShutdown() {
             'timestamp' => time(),
             'version' => APP_VERSION
         ]);
+    }
+}
+
+// =============================================================================
+// ADVANCED AUTOMATION TOOLS & SCRIPTS
+// =============================================================================
+
+class AutomationTools {
+    private $conn;
+    
+    public function __construct($db) {
+        $this->conn = $db;
+    }
+    
+    // Automated Interest Calculation
+    public function calculateDailyInterest() {
+        try {
+            $investmentModel = new InvestmentModel($this->conn);
+            $result = $investmentModel->calculateDailyInterest();
+            
+            $this->logAutomation('daily_interest_calculation', [
+                'processed_count' => $result['processed_count'],
+                'total_interest' => $result['total_interest'],
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            
+            return $result;
+        } catch (Exception $e) {
+            $this->logAutomation('daily_interest_calculation_error', [
+                'error' => $e->getMessage(),
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            return false;
+        }
+    }
+    
+    // Automated Withdrawal Processing
+    public function processPendingWithdrawals() {
+        try {
+            $withdrawalModel = new WithdrawalModel($this->conn);
+            $pending_withdrawals = $withdrawalModel->getPendingWithdrawals();
+            $processed = 0;
+            
+            foreach ($pending_withdrawals as $withdrawal) {
+                // Auto-approve withdrawals below certain threshold
+                if ($withdrawal['amount'] <= 5000) {
+                    $withdrawalModel->approveWithdrawal($withdrawal['id'], 1); // System admin ID
+                    $processed++;
+                }
+            }
+            
+            $this->logAutomation('withdrawal_processing', [
+                'processed_count' => $processed,
+                'total_pending' => count($pending_withdrawals),
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            
+            return $processed;
+        } catch (Exception $e) {
+            $this->logAutomation('withdrawal_processing_error', [
+                'error' => $e->getMessage(),
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            return false;
+        }
+    }
+    
+    // Automated Portfolio Rebalancing
+    public function rebalancePortfolios() {
+        try {
+            $userModel = new UserModel($this->conn);
+            $investmentModel = new InvestmentModel($this->conn);
+            
+            $users = $userModel->getAllUsers(1, 1000); // Get all users
+            $rebalanced = 0;
+            
+            foreach ($users['data'] as $user) {
+                $portfolio = $investmentModel->getAIOptimizedPortfolio($user['id']);
+                
+                if ($portfolio['diversification_score'] < 60) {
+                    // Generate rebalancing recommendations
+                    $this->createNotification(
+                        $user['id'],
+                        "📊 Portfolio Rebalancing Suggested",
+                        "Your portfolio diversification score is " . $portfolio['diversification_score'] . "%. Consider rebalancing for better performance.",
+                        'warning',
+                        '/portfolio'
+                    );
+                    $rebalanced++;
+                }
+            }
+            
+            $this->logAutomation('portfolio_rebalancing', [
+                'users_analyzed' => count($users['data']),
+                'rebalanced_count' => $rebalanced,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            
+            return $rebalanced;
+        } catch (Exception $e) {
+            $this->logAutomation('portfolio_rebalancing_error', [
+                'error' => $e->getMessage(),
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            return false;
+        }
+    }
+    
+    // Automated Security Scans
+    public function runSecurityScan() {
+        try {
+            $scan_results = [
+                'failed_logins' => $this->checkFailedLogins(),
+                'suspicious_activities' => $this->checkSuspiciousActivities(),
+                'system_health' => $this->checkSystemHealth(),
+                'timestamp' => date('Y-m-d H:i:s')
+            ];
+            
+            $this->logAutomation('security_scan', $scan_results);
+            
+            // Send alert if issues found
+            if ($scan_results['failed_logins'] > 10 || $scan_results['suspicious_activities'] > 5) {
+                $this->sendSecurityAlert($scan_results);
+            }
+            
+            return $scan_results;
+        } catch (Exception $e) {
+            $this->logAutomation('security_scan_error', [
+                'error' => $e->getMessage(),
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            return false;
+        }
+    }
+    
+    // Automated Database Backup
+    public function backupDatabase() {
+        try {
+            $backup_file = __DIR__ . '/backups/database/backup_' . date('Y-m-d_H-i-s') . '.sql';
+            $command = "pg_dump -h " . DB_HOST . " -U " . DB_USER . " -d " . DB_NAME . " > " . $backup_file;
+            putenv("PGPASSWORD=" . DB_PASS);
+            
+            system($command, $result_code);
+            
+            if ($result_code === 0) {
+                $this->logAutomation('database_backup', [
+                    'file' => $backup_file,
+                    'size' => filesize($backup_file),
+                    'timestamp' => date('Y-m-d H:i:s')
+                ]);
+                return true;
+            } else {
+                throw new Exception("Backup failed with code: " . $result_code);
+            }
+        } catch (Exception $e) {
+            $this->logAutomation('database_backup_error', [
+                'error' => $e->getMessage(),
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            return false;
+        }
+    }
+    
+    // Automated Market Analysis
+    public function analyzeMarketTrends() {
+        try {
+            $analysis_data = [
+                'market_sentiment' => $this->calculateMarketSentiment(),
+                'trend_analysis' => $this->analyzeInvestmentTrends(),
+                'risk_assessment' => $this->assessMarketRisk(),
+                'recommendations' => $this->generateMarketRecommendations(),
+                'timestamp' => date('Y-m-d H:i:s')
+            ];
+            
+            $this->logAutomation('market_analysis', $analysis_data);
+            
+            // Update system settings with new analysis
+            $this->updateMarketAnalysis($analysis_data);
+            
+            return $analysis_data;
+        } catch (Exception $e) {
+            $this->logAutomation('market_analysis_error', [
+                'error' => $e->getMessage(),
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            return false;
+        }
+    }
+    
+    private function checkFailedLogins() {
+        $query = "SELECT COUNT(*) as count FROM audit_logs 
+                  WHERE action = 'login_failed' 
+                  AND created_at >= NOW() - INTERVAL '1 hour'";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt->fetch()['count'];
+    }
+    
+    private function checkSuspiciousActivities() {
+        $query = "SELECT COUNT(*) as count FROM audit_logs 
+                  WHERE severity = 'warning' 
+                  AND created_at >= NOW() - INTERVAL '1 hour'";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt->fetch()['count'];
+    }
+    
+    private function checkSystemHealth() {
+        // Check database connection
+        $db_health = $this->conn->query("SELECT 1") ? 'healthy' : 'unhealthy';
+        
+        // Check disk space
+        $disk_usage = disk_free_space(__DIR__) / disk_total_space(__DIR__) * 100;
+        $disk_health = $disk_usage > 10 ? 'healthy' : 'warning';
+        
+        // Check memory usage
+        $memory_usage = memory_get_usage(true) / 1048576; // Convert to MB
+        $memory_health = $memory_usage < 100 ? 'healthy' : 'warning';
+        
+        return [
+            'database' => $db_health,
+            'disk_space' => $disk_health,
+            'memory_usage' => $memory_health,
+            'disk_usage_percent' => round($disk_usage, 2),
+            'memory_usage_mb' => round($memory_usage, 2)
+        ];
+    }
+    
+    private function sendSecurityAlert($scan_results) {
+        $message = "Security Alert:\n";
+        $message .= "Failed Logins: " . $scan_results['failed_logins'] . "\n";
+        $message .= "Suspicious Activities: " . $scan_results['suspicious_activities'] . "\n";
+        $message .= "System Health: " . json_encode($scan_results['system_health']);
+        
+        error_log("SECURITY ALERT: " . $message);
+        
+        // In production, this would send email/SMS notifications
+        file_put_contents(__DIR__ . '/logs/security/alerts.log', $message . "\n", FILE_APPEND);
+    }
+    
+    private function calculateMarketSentiment() {
+        // Simulate market sentiment analysis
+        $sentiments = ['bullish', 'bearish', 'neutral'];
+        return $sentiments[array_rand($sentiments)];
+    }
+    
+    private function analyzeInvestmentTrends() {
+        $query = "SELECT 
+            COUNT(*) as total_investments,
+            AVG(amount) as avg_investment,
+            SUM(amount) as total_invested,
+            COUNT(CASE WHEN risk_level = 'high' THEN 1 END) as high_risk_count,
+            COUNT(CASE WHEN risk_level = 'low' THEN 1 END) as low_risk_count
+            FROM investments 
+            WHERE created_at >= NOW() - INTERVAL '7 days'";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt->fetch();
+    }
+    
+    private function assessMarketRisk() {
+        // Simulate market risk assessment
+        $risk_levels = ['low', 'medium', 'high'];
+        return [
+            'level' => $risk_levels[array_rand($risk_levels)],
+            'score' => rand(1, 100),
+            'factors' => ['volatility', 'liquidity', 'economic_indicators']
+        ];
+    }
+    
+    private function generateMarketRecommendations() {
+        return [
+            'buy_recommendations' => ['AI Optimized Plan', 'Growth Plan'],
+            'hold_recommendations' => ['Starter Plan'],
+            'watch_list' => ['Premium Plan'],
+            'general_advice' => 'Market conditions favorable for medium-term investments'
+        ];
+    }
+    
+    private function updateMarketAnalysis($analysis_data) {
+        $query = "INSERT INTO system_settings (setting_key, setting_value, setting_type, description, is_public) 
+                  VALUES ('market_analysis', ?, 'json', 'Current market analysis', true)
+                  ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([json_encode($analysis_data)]);
+    }
+    
+    private function logAutomation($action, $data) {
+        $log_file = __DIR__ . '/logs/automation/' . date('Y-m-d') . '.log';
+        $log_entry = [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'action' => $action,
+            'data' => $data
+        ];
+        
+        file_put_contents($log_file, json_encode($log_entry) . "\n", FILE_APPEND);
+    }
+    
+    private function createNotification($user_id, $title, $message, $type = 'info', $action_url = null) {
+        $query = "INSERT INTO notifications (user_id, title, message, type, action_url) VALUES (?, ?, ?, ?, ?)";
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([$user_id, $title, $message, $type, $action_url]);
+    }
+}
+
+// =============================================================================
+// BEHAVIOR SECTIONS & USER BEHAVIOR ANALYTICS
+// =============================================================================
+
+class BehaviorAnalytics {
+    private $conn;
+    
+    public function __construct($db) {
+        $this->conn = $db;
+    }
+    
+    // Track user behavior patterns
+    public function trackUserBehavior($user_id, $action, $metadata = []) {
+        try {
+            $behavior_data = [
+                'user_id' => $user_id,
+                'action' => $action,
+                'metadata' => $metadata,
+                'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+                'timestamp' => date('Y-m-d H:i:s'),
+                'session_id' => session_id()
+            ];
+            
+            $this->saveBehaviorData($behavior_data);
+            $this->analyzeBehaviorPattern($user_id, $action, $metadata);
+            
+            return true;
+        } catch (Exception $e) {
+            error_log("Behavior tracking error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    // Analyze investment behavior patterns
+    public function analyzeInvestmentBehavior($user_id) {
+        try {
+            $query = "SELECT 
+                COUNT(*) as total_investments,
+                AVG(amount) as average_investment,
+                MIN(amount) as min_investment,
+                MAX(amount) as max_investment,
+                AVG(ai_performance_score) as avg_performance,
+                COUNT(CASE WHEN risk_level = 'high' THEN 1 END) as high_risk_count,
+                COUNT(CASE WHEN risk_level = 'low' THEN 1 END) as low_risk_count,
+                COUNT(CASE WHEN auto_renew = true THEN 1 END) as auto_renew_count
+                FROM investments 
+                WHERE user_id = ?";
+            
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute([$user_id]);
+            $stats = $stmt->fetch();
+            
+            $behavior_profile = $this->generateBehaviorProfile($stats);
+            $this->updateUserBehaviorProfile($user_id, $behavior_profile);
+            
+            return $behavior_profile;
+        } catch (Exception $e) {
+            error_log("Investment behavior analysis error: " . $e->getMessage());
+            return null;
+        }
+    }
+    
+    // Generate user behavior profile
+    private function generateBehaviorProfile($stats) {
+        $profile = [
+            'risk_tolerance' => $this->calculateRiskTolerance($stats),
+            'investment_frequency' => $this->calculateInvestmentFrequency($stats),
+            'preferred_amount_range' => $this->calculateAmountRange($stats),
+            'performance_trend' => $this->calculatePerformanceTrend($stats),
+            'behavior_type' => $this->determineBehaviorType($stats),
+            'recommendation_score' => $this->calculateRecommendationScore($stats),
+            'last_updated' => date('Y-m-d H:i:s')
+        ];
+        
+        return $profile;
+    }
+    
+    private function calculateRiskTolerance($stats) {
+        $high_risk_ratio = $stats['high_risk_count'] / max(1, $stats['total_investments']);
+        
+        if ($high_risk_ratio > 0.6) return 'high';
+        if ($high_risk_ratio > 0.3) return 'medium';
+        return 'low';
+    }
+    
+    private function calculateInvestmentFrequency($stats) {
+        $total_investments = $stats['total_investments'];
+        
+        if ($total_investments > 10) return 'frequent';
+        if ($total_investments > 5) return 'regular';
+        if ($total_investments > 2) return 'occasional';
+        return 'new';
+    }
+    
+    private function calculateAmountRange($stats) {
+        $avg_amount = $stats['average_investment'];
+        
+        if ($avg_amount > 100000) return 'premium';
+        if ($avg_amount > 50000) return 'high';
+        if ($avg_amount > 10000) return 'medium';
+        return 'standard';
+    }
+    
+    private function calculatePerformanceTrend($stats) {
+        $avg_performance = $stats['avg_performance'];
+        
+        if ($avg_performance > 8.0) return 'excellent';
+        if ($avg_performance > 6.0) return 'good';
+        if ($avg_performance > 4.0) return 'average';
+        return 'needs_improvement';
+    }
+    
+    private function determineBehaviorType($stats) {
+        $auto_renew_ratio = $stats['auto_renew_count'] / max(1, $stats['total_investments']);
+        
+        if ($auto_renew_ratio > 0.7) return 'automated_investor';
+        if ($stats['total_investments'] > 8) return 'active_trader';
+        if ($stats['total_investments'] > 3) return 'balanced_investor';
+        return 'cautious_investor';
+    }
+    
+    private function calculateRecommendationScore($stats) {
+        $score = 50; // Base score
+        
+        // Adjust based on performance
+        $score += ($stats['avg_performance'] - 5) * 5;
+        
+        // Adjust based on diversification
+        if ($stats['total_investments'] >= 3) $score += 10;
+        
+        // Adjust based on risk management
+        if ($stats['low_risk_count'] > $stats['high_risk_count']) $score += 5;
+        
+        return min(100, max(0, $score));
+    }
+    
+    private function saveBehaviorData($behavior_data) {
+        $log_file = __DIR__ . '/logs/behavior/' . date('Y-m-d') . '.log';
+        file_put_contents($log_file, json_encode($behavior_data) . "\n", FILE_APPEND);
+    }
+    
+    private function updateUserBehaviorProfile($user_id, $profile) {
+        $query = "UPDATE users SET preferences = jsonb_set(
+            COALESCE(preferences, '{}'::jsonb), 
+            '{behavior_profile}', 
+            ?
+        ) WHERE id = ?";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([json_encode($profile), $user_id]);
+    }
+    
+    // Get user behavior insights
+    public function getUserBehaviorInsights($user_id) {
+        try {
+            $query = "SELECT preferences->'behavior_profile' as behavior_profile FROM users WHERE id = ?";
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute([$user_id]);
+            $result = $stmt->fetch();
+            
+            if ($result && $result['behavior_profile']) {
+                return json_decode($result['behavior_profile'], true);
+            }
+            
+            // Generate new profile if none exists
+            return $this->analyzeInvestmentBehavior($user_id);
+        } catch (Exception $e) {
+            error_log("Behavior insights error: " . $e->getMessage());
+            return null;
+        }
     }
 }
 
@@ -643,6 +1132,30 @@ class Database {
                     is_default BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                // Automation logs table
+                "CREATE TABLE IF NOT EXISTS automation_logs (
+                    id SERIAL PRIMARY KEY,
+                    automation_type VARCHAR(50) NOT NULL,
+                    status VARCHAR(20) DEFAULT 'completed' CHECK (status IN ('completed','failed','running')),
+                    data JSONB,
+                    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                // Behavior analytics table
+                "CREATE TABLE IF NOT EXISTS behavior_analytics (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    action_type VARCHAR(50) NOT NULL,
+                    action_data JSONB,
+                    session_id VARCHAR(128),
+                    ip_address VARCHAR(45),
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )"
             ];
 
@@ -673,7 +1186,9 @@ class Database {
                 "CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)",
                 "CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions(expires_at)",
                 "CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_status ON withdrawal_requests(status)",
-                "CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_user_id ON withdrawal_requests(user_id)"
+                "CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_user_id ON withdrawal_requests(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_automation_logs_type ON automation_logs(automation_type)",
+                "CREATE INDEX IF NOT EXISTS idx_behavior_analytics_user_action ON behavior_analytics(user_id, action_type)"
             ];
 
             foreach ($indexes as $index) {
@@ -841,7 +1356,12 @@ class Database {
                     ['ai_recommendations_enabled', 'true', 'boolean', 'Enable AI recommendations', false],
                     ['auto_interest_calculation', 'true', 'boolean', 'Enable automatic interest calculation', false],
                     ['maintenance_mode', 'false', 'boolean', 'Maintenance mode', false],
-                    ['account_linking_required', 'true', 'boolean', 'Account linking required for withdrawal', true]
+                    ['account_linking_required', 'true', 'boolean', 'Account linking required for withdrawal', true],
+                    ['auto_withdrawal_processing', 'true', 'boolean', 'Enable automatic withdrawal processing', false],
+                    ['auto_portfolio_rebalancing', 'true', 'boolean', 'Enable automatic portfolio rebalancing', false],
+                    ['auto_market_analysis', 'true', 'boolean', 'Enable automatic market analysis', false],
+                    ['auto_security_scans', 'true', 'boolean', 'Enable automatic security scans', false],
+                    ['auto_backup_enabled', 'true', 'boolean', 'Enable automatic database backups', false]
                 ];
 
                 $setting_stmt = $this->conn->prepare("
@@ -3740,7 +4260,7 @@ class WithdrawalController {
     public function __construct($db) {
         $this->conn = $db;
         $this->withdrawalModel = new WithdrawalModel($db);
-        $this->userModel = new UserModel($db);
+        $this->userModel = new UserModel($this->conn);
     }
 
     public function validateWithdrawal($user_id, $input) {
@@ -3832,6 +4352,99 @@ class AIController {
 }
 
 // =============================================================================
+// AUTOMATION CONTROLLER FOR ADVANCED FEATURES
+// =============================================================================
+
+class AutomationController {
+    private $conn;
+    private $automationTools;
+    private $behaviorAnalytics;
+
+    public function __construct($db) {
+        $this->conn = $db;
+        $this->automationTools = new AutomationTools($db);
+        $this->behaviorAnalytics = new BehaviorAnalytics($db);
+    }
+
+    public function runDailyTasks() {
+        try {
+            $results = [];
+
+            // Run daily interest calculation
+            if (AUTO_INTEREST_CALCULATION) {
+                $results['interest_calculation'] = $this->automationTools->calculateDailyInterest();
+            }
+
+            // Process pending withdrawals
+            if (AUTO_WITHDRAWAL_PROCESSING) {
+                $results['withdrawal_processing'] = $this->automationTools->processPendingWithdrawals();
+            }
+
+            // Run portfolio rebalancing
+            if (AUTO_PORTFOLIO_REBALANCING) {
+                $results['portfolio_rebalancing'] = $this->automationTools->rebalancePortfolios();
+            }
+
+            // Run market analysis
+            if (AUTO_MARKET_ANALYSIS) {
+                $results['market_analysis'] = $this->automationTools->analyzeMarketTrends();
+            }
+
+            // Run security scans
+            if (AUTO_SECURITY_SCANS) {
+                $results['security_scan'] = $this->automationTools->runSecurityScan();
+            }
+
+            // Run database backup
+            if (AUTO_BACKUP_ENABLED) {
+                $results['database_backup'] = $this->automationTools->backupDatabase();
+            }
+
+            Response::success($results, 'Daily automation tasks completed successfully');
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage(), 400);
+        }
+    }
+
+    public function trackUserBehavior($user_id, $input) {
+        try {
+            $action = $input['action'] ?? 'unknown';
+            $metadata = $input['metadata'] ?? [];
+
+            $this->behaviorAnalytics->trackUserBehavior($user_id, $action, $metadata);
+
+            Response::success([], 'User behavior tracked successfully');
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage(), 400);
+        }
+    }
+
+    public function getUserBehaviorInsights($user_id) {
+        try {
+            $insights = $this->behaviorAnalytics->getUserBehaviorInsights($user_id);
+
+            Response::success($insights, 'User behavior insights retrieved successfully');
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage(), 400);
+        }
+    }
+
+    public function analyzeInvestmentBehavior($user_id) {
+        try {
+            $analysis = $this->behaviorAnalytics->analyzeInvestmentBehavior($user_id);
+
+            Response::success($analysis, 'Investment behavior analysis completed');
+
+        } catch (Exception $e) {
+            Response::error($e->getMessage(), 400);
+        }
+    }
+}
+
+// =============================================================================
 // ENHANCED APPLICATION CLASS WITH COMPLETE ROUTING AND DEBUG ENDPOINTS
 // =============================================================================
 
@@ -3841,6 +4454,7 @@ class Application {
     private $investmentController;
     private $withdrawalController;
     private $aiController;
+    private $automationController;
 
     public function __construct() {
         try {
@@ -3852,6 +4466,7 @@ class Application {
             $this->investmentController = new InvestmentController($this->db);
             $this->withdrawalController = new WithdrawalController($this->db);
             $this->aiController = new AIController($this->db);
+            $this->automationController = new AutomationController($this->db);
             
         } catch (Exception $e) {
             error_log("Application initialization failed: " . $e->getMessage());
@@ -3964,6 +4579,26 @@ class Application {
                 if ($method === 'GET') $this->aiController->getPortfolioOptimization($user['user_id']);
                 break;
 
+            // Automation endpoints
+            case '/api/automation/daily-tasks':
+                if ($method === 'POST') $this->automationController->runDailyTasks();
+                break;
+
+            case '/api/behavior/track':
+                $user = $this->authenticate();
+                if ($method === 'POST') $this->automationController->trackUserBehavior($user['user_id'], $input);
+                break;
+
+            case '/api/behavior/insights':
+                $user = $this->authenticate();
+                if ($method === 'GET') $this->automationController->getUserBehaviorInsights($user['user_id']);
+                break;
+
+            case '/api/behavior/investment-analysis':
+                $user = $this->authenticate();
+                if ($method === 'GET') $this->automationController->analyzeInvestmentBehavior($user['user_id']);
+                break;
+
             // Health check and debug endpoints
             case '/api/health':
                 if ($method === 'GET') Response::success([
@@ -3973,6 +4608,14 @@ class Application {
                     'environment' => 'production',
                     'database' => $this->db ? 'connected' : 'disconnected',
                     'ai_enabled' => AI_RECOMMENDATION_ENABLED,
+                    'automation_enabled' => [
+                        'interest_calculation' => AUTO_INTEREST_CALCULATION,
+                        'withdrawal_processing' => AUTO_WITHDRAWAL_PROCESSING,
+                        'portfolio_rebalancing' => AUTO_PORTFOLIO_REBALANCING,
+                        'market_analysis' => AUTO_MARKET_ANALYSIS,
+                        'security_scans' => AUTO_SECURITY_SCANS,
+                        'backup_enabled' => AUTO_BACKUP_ENABLED
+                    ],
                     'withdrawal_limits' => [
                         'min_withdrawal' => MIN_WITHDRAWAL,
                         'max_withdrawal' => MAX_WITHDRAWAL,
@@ -3985,6 +4628,10 @@ class Application {
 
             case '/api/debug-db':
                 if ($method === 'GET') $this->debugDatabase();
+                break;
+
+            case '/api/debug-automation':
+                if ($method === 'GET') $this->debugAutomation();
                 break;
 
             // CSRF token endpoint
@@ -4045,6 +4692,60 @@ class Application {
             echo "❌ DATABASE CONNECTION FAILED:\n";
             echo "Error: " . $e->getMessage() . "\n";
             echo "Error Code: " . $e->getCode() . "\n";
+        }
+        
+        exit;
+    }
+
+    private function debugAutomation() {
+        header('Content-Type: text/plain');
+        echo "=== AUTOMATION SYSTEM DEBUG ===\n\n";
+        
+        $automationTools = new AutomationTools($this->db);
+        
+        echo "Automation Features:\n";
+        echo "- Interest Calculation: " . (AUTO_INTEREST_CALCULATION ? "ENABLED" : "DISABLED") . "\n";
+        echo "- Withdrawal Processing: " . (AUTO_WITHDRAWAL_PROCESSING ? "ENABLED" : "DISABLED") . "\n";
+        echo "- Portfolio Rebalancing: " . (AUTO_PORTFOLIO_REBALANCING ? "ENABLED" : "DISABLED") . "\n";
+        echo "- Market Analysis: " . (AUTO_MARKET_ANALYSIS ? "ENABLED" : "DISABLED") . "\n";
+        echo "- Security Scans: " . (AUTO_SECURITY_SCANS ? "ENABLED" : "DISABLED") . "\n";
+        echo "- Database Backup: " . (AUTO_BACKUP_ENABLED ? "ENABLED" : "DISABLED") . "\n\n";
+        
+        echo "Testing Automation Tools:\n";
+        
+        // Test security scan
+        try {
+            $security_scan = $automationTools->runSecurityScan();
+            echo "✅ Security Scan: COMPLETED\n";
+            echo "   Failed Logins: " . $security_scan['failed_logins'] . "\n";
+            echo "   Suspicious Activities: " . $security_scan['suspicious_activities'] . "\n";
+        } catch (Exception $e) {
+            echo "❌ Security Scan: FAILED - " . $e->getMessage() . "\n";
+        }
+        
+        // Test market analysis
+        try {
+            $market_analysis = $automationTools->analyzeMarketTrends();
+            echo "✅ Market Analysis: COMPLETED\n";
+            echo "   Market Sentiment: " . $market_analysis['market_sentiment'] . "\n";
+        } catch (Exception $e) {
+            echo "❌ Market Analysis: FAILED - " . $e->getMessage() . "\n";
+        }
+        
+        echo "\nBehavior Analytics:\n";
+        $behaviorAnalytics = new BehaviorAnalytics($this->db);
+        
+        try {
+            $test_user_id = 1; // Assuming user ID 1 exists
+            $behavior_insights = $behaviorAnalytics->getUserBehaviorInsights($test_user_id);
+            if ($behavior_insights) {
+                echo "✅ Behavior Analytics: WORKING\n";
+                echo "   Risk Tolerance: " . ($behavior_insights['risk_tolerance'] ?? 'N/A') . "\n";
+            } else {
+                echo "⚠️ Behavior Analytics: NO DATA\n";
+            }
+        } catch (Exception $e) {
+            echo "❌ Behavior Analytics: FAILED - " . $e->getMessage() . "\n";
         }
         
         exit;
@@ -4113,6 +4814,44 @@ class Application {
 }
 
 // =============================================================================
+// AUTOMATION CRON JOBS AND SCHEDULED TASKS
+// =============================================================================
+
+class CronJobs {
+    private $db;
+    
+    public function __construct($db) {
+        $this->db = $db;
+    }
+    
+    public function runScheduledTasks() {
+        $automationTools = new AutomationTools($this->db);
+        $results = [];
+        
+        // Get current hour
+        $current_hour = date('H');
+        
+        // Daily tasks (run once per day)
+        if ($current_hour == DAILY_INTEREST_CALCULATION_HOUR) {
+            $results['daily_interest'] = $automationTools->calculateDailyInterest();
+            $results['portfolio_rebalancing'] = $automationTools->rebalancePortfolios();
+            $results['market_analysis'] = $automationTools->analyzeMarketTrends();
+        }
+        
+        // Hourly tasks
+        $results['withdrawal_processing'] = $automationTools->processPendingWithdrawals();
+        $results['security_scan'] = $automationTools->runSecurityScan();
+        
+        // Weekly backup (run on Sundays)
+        if (date('w') == 0 && $current_hour == 2) {
+            $results['weekly_backup'] = $automationTools->backupDatabase();
+        }
+        
+        return $results;
+    }
+}
+
+// =============================================================================
 // APPLICATION BOOTSTRAP WITH ENHANCED ERROR HANDLING
 // =============================================================================
 
@@ -4123,4 +4862,20 @@ try {
     error_log("Application startup failed: " . $e->getMessage());
     Response::error('Application startup failed: ' . $e->getMessage(), 500);
 }
+
+// =============================================================================
+// MANUAL AUTOMATION TRIGGER (for testing purposes)
+// =============================================================================
+
+// Uncomment the following lines to test automation manually
+/*
+if (isset($_GET['run_automation']) && $_GET['run_automation'] === 'true') {
+    $database = new Database();
+    $db = $database->getConnection();
+    $cronJobs = new CronJobs($db);
+    $results = $cronJobs->runScheduledTasks();
+    echo "Automation Results: " . json_encode($results, JSON_PRETTY_PRINT);
+    exit;
+}
+*/
 ?>

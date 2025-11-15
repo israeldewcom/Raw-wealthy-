@@ -1,4 +1,8 @@
 <?php
+// Add this to config/config.php at the TOP
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 // Application configuration
 define('APP_NAME', 'Raw Wealthy Investment Platform');
 define('APP_VERSION', '4.0.0');
